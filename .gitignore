@@ -16,3 +16,9 @@ venv/
 
 # OS / editor noise
 .DS_Store
+
+# Vendored dotfiles repo (separate git history — not part of this project)
+/Gentleman.Dots/
+
+# Editor/tool runtime caches
+.cache/
