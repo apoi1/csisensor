@@ -16,6 +16,7 @@
 | 12 | Write integration test script | done | scripts/simulate_esp32.py (dry-run without hardware) |
 | 13 | Write unit test for FFT | done | backend/tests/test_vitals_processor.py — 6/6 passed (numpy+scipy venv) |
 | 14 | Document SDK and deployment steps | done | DEPLOYMENT.md + README.md + docs/DEVELOPMENT-TOOLS.md |
+| 15 | Align docs with Windows 10 compatibility | done | PROJECT-ARCHITECTURE.md env → Win 10/11; DEPLOYMENT.md mirrored-networking note marked Win11 22H2+ only (NAT fallback on Win10) |
 
 Verification evidence: `python3 -m py_compile` OK on all 9 Python files;
 `pytest tests -q` → 6 passed in 1.21s (Python 3.14 venv with numpy/scipy).

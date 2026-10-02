@@ -137,7 +137,7 @@ Expected payload (t_us, rssi, n, seq, amplitudes):
 1717000000123456,-52,64,42,178,176,171,169,...
 ```
 
-> With WSL mirrored networking (`networkingMode=mirrored`), `localhost` also works.
+> With WSL mirrored networking (`networkingMode=mirrored`), `localhost` also works — **Windows 11 22H2+ only**. On Windows 10 this mode is unsupported (WSL runs in NAT mode), so keep using the `BROKER` / Windows-LAN-IP path above.
 
 ## 8. Backend + GUI (Windows)
 

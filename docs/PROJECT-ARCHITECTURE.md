@@ -15,7 +15,7 @@ Pipeline de seguimiento vital (pulso/respiración) mediante WiFi CSI. Utiliza el
 - **Firmware:** ESP-IDF v5.x (C++11/C++20), lwIP (ping), esp-mqtt.
 - **Backend:** Python 3.10+, `numpy`, `scipy` (filtros butterworth sosfiltfilt, FFT).
 - **GUI:** PyQt5 (Qt5Agg backend), Matplotlib.
-- **Entorno:** WSL2 (firmware) / Windows 11 (Docker/Python).
+- **Entorno:** WSL2 (firmware) / Windows 10/11 (Docker/Python).
 
 ## Estado de implementación
 - [x] Firmware nativo con API ESP-IDF v5.
