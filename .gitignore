@@ -1,0 +1,18 @@
+# Local Pi runtime state
+.atl/
+
+# ESP-IDF build artifacts
+build/
+sdkconfig
+managed_components/
+dependencies.lock
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# OS / editor noise
+.DS_Store

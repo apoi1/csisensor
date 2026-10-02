@@ -1,0 +1,9 @@
+# Target
+CONFIG_IDF_TARGET="esp32s3"
+
+# Flash: change to 8MB/16MB if your board has a bigger flash chip
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
+# 1 kHz FreeRTOS tick → precise pdMS_TO_TICKS() pacing
+CONFIG_FREERTOS_HZ=1000
