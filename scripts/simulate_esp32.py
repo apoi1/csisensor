@@ -99,7 +99,7 @@ def main() -> None:
                         + 3.0 * np.sin(2 * np.pi * args.resp_hz * t + resp_phase)
                         + 0.9 * np.sin(2 * np.pi * args.heart_hz * t + heart_phase)
                         + rng.normal(0.0, 0.05, args.subcarriers))
-                if in_episode:
+                if moving:
                     amps = amps + motion_offset
 
             if in_episode:
