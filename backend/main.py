@@ -10,6 +10,7 @@ from PyQt5.QtWidgets import QApplication
 
 from config import Config
 from gui import VitalsWindow
+from motion_analyzer import MotionAnalyzer
 from mqtt_subscriber import CsiSubscriber
 from vitals_processor import VitalsProcessor
 
@@ -48,11 +49,18 @@ def main() -> int:
                                 heart_band_hz=cfg.heart_band_hz,
                                 resp_band_hz=cfg.resp_band_hz,
                                 min_snr_db=cfg.min_snr_db)
+    motion = MotionAnalyzer(fs=cfg.sample_rate_hz,
+                            window_s=cfg.window_seconds,
+                            absent_std_threshold=cfg.absent_std_threshold,
+                            moving_rms_threshold=cfg.moving_rms_threshold,
+                            rssi_ref_dbm=cfg.rssi_ref_dbm,
+                            ref_distance_m=cfg.ref_distance_m,
+                            path_loss_exponent=cfg.path_loss_exponent)
     subscriber = CsiSubscriber(cfg.mqtt_host, cfg.mqtt_port, cfg.topic_raw)
     subscriber.start()
 
     app = QApplication(sys.argv)
-    window = VitalsWindow(cfg, subscriber, processor)
+    window = VitalsWindow(cfg, subscriber, processor, motion)
     window.show()
     return app.exec_()
 

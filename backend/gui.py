@@ -1,7 +1,9 @@
-"""PyQt5 real-time window: CSI waveform + estimated vital signs."""
+"""PyQt5 real-time window: CSI waveform, vital signs, body position and
+physics panels (subcarrier heatmap, spectrogram, motion energy)."""
 from __future__ import annotations
 
 import time
+from collections import deque
 
 import matplotlib
 matplotlib.use("Qt5Agg")
@@ -12,51 +14,88 @@ from matplotlib.figure import Figure
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (QApplication, QHBoxLayout, QLabel, QMainWindow,
                              QVBoxLayout, QWidget)
+from scipy import signal as sps
 
 from vitals_processor import VitalsEstimate, VitalsProcessor
 
+# Motion-energy history length in the bottom-right panel (seconds).
+_MOTION_HISTORY_S = 600.0
+
 
 class VitalsWindow(QMainWindow):
-    def __init__(self, cfg, subscriber, processor):
+    """Left column: CSI/vital traces; right column: physics panels."""
+
+    def __init__(self, cfg, subscriber, processor, motion):
         super().__init__()
         self.cfg = cfg
         self.sub = subscriber
         self.proc = processor
+        self.motion = motion
         self._last_estimate = 0.0
         self._pkt_window_start = time.monotonic()
         self._pkt_window_count = 0
         self._pkt_rate = 0.0
 
         self.setWindowTitle("WiFi-CSI Vital Signs - experimental")
-        self.resize(1000, 640)
+        self.resize(1280, 800)
 
         root = QVBoxLayout()
         numbers = QHBoxLayout()
         self.lbl_heart = self._big_label("-")
         self.lbl_resp = self._big_label("-")
+        self.lbl_body = self._body_label("waiting for data...")
         self.lbl_meta = QLabel("waiting for data...")
         self.lbl_meta.setAlignment(Qt.AlignCenter)
         self.lbl_meta.setStyleSheet("color: #666;")
         numbers.addWidget(self.lbl_heart)
         numbers.addWidget(self.lbl_resp)
         root.addLayout(numbers)
+        root.addWidget(self.lbl_body)
         root.addWidget(self.lbl_meta)
 
-        self.figure = Figure(figsize=(10, 6))
+        # Display mirror of the current CSI window for the physics panels
+        # (rows of per-packet amplitudes; same capacity as the processor).
+        self._disp_times: deque = deque(maxlen=self.proc.capacity)
+        self._disp_rows: deque = deque(maxlen=self.proc.capacity)
+        self._motion_history: deque = deque()  # (t_monotonic, motion_rms)
+        self.img_heat = None
+        self.img_spec = None
+
+        self.figure = Figure(figsize=(12.8, 6.2))
         self.canvas = FigureCanvasQTAgg(self.figure)
-        gs = self.figure.add_gridspec(3, 1, hspace=0.7)
-        self.ax_raw = self.figure.add_subplot(gs[0])
-        self.ax_resp = self.figure.add_subplot(gs[1])
-        self.ax_heart = self.figure.add_subplot(gs[2])
-        self.ax_raw.set_title("CSI mean amplitude (window)")
-        self.ax_resp.set_title("Respiration (filtered)")
-        self.ax_heart.set_title("Heart (filtered)")
-        for ax in (self.ax_raw, self.ax_resp, self.ax_heart):
+        gs = self.figure.add_gridspec(3, 2)
+        self.ax_raw = self.figure.add_subplot(gs[0, 0])
+        self.ax_resp = self.figure.add_subplot(gs[1, 0])
+        self.ax_heart = self.figure.add_subplot(gs[2, 0])
+        self.ax_heat = self.figure.add_subplot(gs[0, 1])
+        self.ax_spec = self.figure.add_subplot(gs[1, 1])
+        self.ax_motion = self.figure.add_subplot(gs[2, 1])
+        resp_lo, resp_hi = self.cfg.resp_band_hz
+        heart_lo, heart_hi = self.cfg.heart_band_hz
+        self.ax_raw.set_title("CSI mean amplitude (window)  "
+                              r"$\bar{a}(t)=\frac{1}{K}\sum_{k}|H_k(t)|$")
+        self.ax_resp.set_title("Respiration (filtered)  $x(t)$, "
+                               f"band {resp_lo:g}\u2013{resp_hi:g} Hz")
+        self.ax_heart.set_title("Heart (filtered)  $x(t)$, "
+                                f"band {heart_lo:g}\u2013{heart_hi:g} Hz")
+        self.ax_heat.set_title(r"$|H_k|=\sqrt{I_k^2+Q_k^2}$")
+        self.ax_spec.set_title(
+            r"$X(\tau,f)=\sum_n x[n]\,w[n-\tau]\,e^{-j2\pi fn/N}$")
+        self.ax_motion.set_title(
+            r"$M_\mathrm{rms}=\sqrt{\langle b^2(t)\rangle}$, band 0.5\u20133.0 Hz")
+        for ax in (self.ax_raw, self.ax_resp, self.ax_heart, self.ax_heat,
+                   self.ax_spec, self.ax_motion):
             ax.set_xlabel("t [s]")
+        self.ax_heat.set_ylabel("subcarrier k")
+        self.ax_spec.set_ylabel("f [Hz]")
         self.line_raw, = self.ax_raw.plot([], [], lw=1, color="#4a90d9")
         self.line_resp, = self.ax_resp.plot([], [], lw=1, color="#2aa876")
         self.line_heart, = self.ax_heart.plot([], [], lw=1, color="#c0392b")
+        self.line_motion, = self.ax_motion.plot([], [], lw=1.2, color="#8e44ad")
+        self.ax_motion.axhline(self.cfg.moving_rms_threshold,
+                               color="#c0392b", ls="--", lw=1)
         root.addWidget(self.canvas)
+        self.figure.tight_layout()
 
         central = QWidget()
         central.setLayout(root)
@@ -74,6 +113,13 @@ class VitalsWindow(QMainWindow):
         lbl.setStyleSheet("font-size: 42px; font-weight: bold; color: #222;")
         return lbl
 
+    @staticmethod
+    def _body_label(text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setAlignment(Qt.AlignCenter)
+        lbl.setStyleSheet("font-size: 20px; font-weight: bold; color: #222;")
+        return lbl
+
     # ------------------------------------------------------------------ slots
     def _on_tick(self):
         packets = self.sub.drain()
@@ -85,13 +131,18 @@ class VitalsWindow(QMainWindow):
             self._pkt_window_count = 0
 
         for p in packets:
-            self.proc.push(p.t_us / 1e6, p.amps)
+            t_s = p.t_us / 1e6
+            self.proc.push(t_s, p.amps)
+            self.motion.push(t_s, p.amps, p.rssi)
+            self._disp_times.append(t_s)
+            self._disp_rows.append(p.amps)
 
         self._redraw_raw()
 
         if now - self._last_estimate >= self.cfg.estimate_every_s:
             self._last_estimate = now
             self._apply_estimate(self.proc.estimate())
+            self._apply_motion(self.motion.estimate(), now)
 
         self.statusBar().showMessage(
             "MQTT {} | {:.1f} pkt/s | window {}/{}".format(
@@ -142,6 +193,90 @@ class VitalsWindow(QMainWindow):
                 est.heart_subcarrier, est.heart_snr_db,
                 est.resp_subcarrier, est.resp_snr_db,
                 est.n_samples, est.n_subcarriers))
+
+    # ------------------------------------------------------- body / physics
+    def _apply_motion(self, est, now):
+        """Update the body label and right-column physics panels (1 Hz)."""
+        if est is None:
+            self.lbl_body.setText("waiting for data...")
+            return
+
+        self._motion_history.append((now, est.motion_rms))
+        cutoff = now - _MOTION_HISTORY_S
+        while self._motion_history and self._motion_history[0][0] < cutoff:
+            self._motion_history.popleft()
+
+        self._update_body_label(est)
+        self._redraw_heatmap()
+        self._redraw_spectrogram()
+        self._redraw_motion_trace()
+        self.canvas.draw_idle()
+
+    def _update_body_label(self, est):
+        """One-glance body-position summary (None values shown as em-dash)."""
+        rssi = "\u2014" if est.rssi_dbm is None else "{:.0f}".format(est.rssi_dbm)
+        dist = ("\u2014" if est.distance_m is None
+                else "~{:.1f} m".format(est.distance_m))
+        self.lbl_body.setText(
+            "Body: {} | motion {:.2f} RMS | \u03c3_window {:.2f} | "
+            "RSSI {} dBm | link dist {}".format(
+                est.state.value, est.motion_rms, est.window_std, rssi, dist))
+
+    def _redraw_heatmap(self):
+        """Subcarrier heatmap: 20*log10(|H_k| + eps) over the current window."""
+        if len(self._disp_rows) < 2:
+            return
+        matrix = np.vstack(self._disp_rows)      # (time, subcarrier)
+        t = np.asarray(self._disp_times, dtype=float)
+        t_rel = t - t[0]
+        db = 20.0 * np.log10(matrix.T + 1e-9)    # (subcarrier, time) = (y, x)
+        n_sub = matrix.shape[1]
+        extent = (t_rel[0], t_rel[-1], n_sub - 1, 0)
+        if self.img_heat is None:
+            self.img_heat = self.ax_heat.imshow(
+                db, aspect="auto", origin="upper", interpolation="nearest",
+                cmap="viridis", extent=extent)
+        else:
+            self.img_heat.set_data(db)
+            self.img_heat.set_extent(extent)
+            self.ax_heat.set_xlim(t_rel[0], t_rel[-1])
+            self.ax_heat.set_ylim(n_sub - 1, 0)
+
+    def _redraw_spectrogram(self):
+        """Spectrogram of the window's mean amplitude with physiological bands."""
+        if len(self._disp_rows) < 2:
+            return
+        matrix = np.vstack(self._disp_rows)
+        x = matrix.mean(axis=1)                  # same series as the raw panel
+        fs = self.cfg.sample_rate_hz
+        nperseg = min(64, x.size)
+        freqs, times, sxx = sps.spectrogram(x, fs=fs, nperseg=nperseg,
+                                            noverlap=nperseg // 2)
+        sxx_db = 10.0 * np.log10(sxx + 1e-12)
+        extent = (times[0], times[-1], freqs[0], freqs[-1])
+        if self.img_spec is None:
+            self.img_spec = self.ax_spec.imshow(
+                sxx_db, aspect="auto", origin="lower", interpolation="bilinear",
+                cmap="magma", extent=extent)
+            resp_lo, resp_hi = self.cfg.resp_band_hz
+            heart_lo, heart_hi = self.cfg.heart_band_hz
+            self.ax_spec.axhspan(resp_lo, resp_hi, color="#2aa876", alpha=0.15)
+            self.ax_spec.axhspan(heart_lo, heart_hi, color="#c0392b", alpha=0.15)
+        else:
+            self.img_spec.set_data(sxx_db)
+            self.img_spec.set_extent(extent)
+            self.ax_spec.set_xlim(times[0], times[-1])
+            self.ax_spec.set_ylim(freqs[0], freqs[-1])
+
+    def _redraw_motion_trace(self):
+        """Motion-energy history (recent estimates) with moving threshold."""
+        if len(self._motion_history) < 2:
+            return
+        t = np.array([s for s, _ in self._motion_history])
+        m = np.array([v for _, v in self._motion_history])
+        self.line_motion.set_data(t - t[0], m)
+        self.ax_motion.relim()
+        self.ax_motion.autoscale_view()
 
     def closeEvent(self, event):
         try:
