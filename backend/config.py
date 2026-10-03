@@ -35,6 +35,13 @@ class Config:
     resp_band_hz: tuple = (0.1, 0.5)
     min_snr_db: float = _env_float("CSI_MIN_SNR_DB", 6.0)
 
+    # Presence / motion analysis (MotionAnalyzer)
+    absent_std_threshold: float = _env_float("CSI_ABSENT_STD", 0.15)
+    moving_rms_threshold: float = _env_float("CSI_MOVING_RMS", 1.5)
+    rssi_ref_dbm: float = _env_float("CSI_RSSI_REF_DBM", -52.0)
+    ref_distance_m: float = _env_float("CSI_REF_DISTANCE_M", 1.0)
+    path_loss_exponent: float = _env_float("CSI_PATH_LOSS_N", 3.0)
+
     # GUI cadence
     gui_refresh_hz: float = 5.0
     estimate_every_s: float = 1.0
