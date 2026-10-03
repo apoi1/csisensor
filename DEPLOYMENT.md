@@ -156,17 +156,40 @@ If `Activate.ps1` is blocked: `Set-ExecutionPolicy -Scope CurrentUser RemoteSign
 In a second terminal (same venv), publish synthetic CSI:
 
 ```powershell
-python ..\scripts\simulate_esp32.py --host localhost
+python ..\scripts\simulate_esp32.py --host localhost --scenario moving
 ```
 
-The GUI should show **~66 BPM / ~18 resp/min** and both waveforms within ~15 s.
+Scenarios: `resting` (subject at rest, ~66 BPM / ~18 resp/min), `moving`
+(adds periodic gross-movement episodes), `absent` (empty room).
+
+The GUI should show **~66 BPM / ~18 resp/min** and both waveforms within ~15 s,
+plus the **Body row** tracking the scenario: `Still` (resting), `Moving`
+during episodes (moving), `Absent` (absent). The right column shows the
+physics panels (subcarrier heatmap, spectrogram, motion-energy trace).
+
+### Tune presence/motion and RSSI ranging (optional)
+
+Body-row thresholds and the RSSI link-distance estimate are configurable
+via environment variables (formulas and calibration procedures in
+`docs/SIGNAL-MODELING.md`):
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `CSI_ABSENT_STD` | `0.15` | window std below this = empty room (`Absent`) |
+| `CSI_MOVING_RMS` | `1.5` | 0.5-3.0 Hz motion-band RMS above this = `Moving` |
+| `CSI_RSSI_REF_DBM` | `-52.0` | reference RSSI `R0` measured at `d0` |
+| `CSI_REF_DISTANCE_M` | `1.0` | reference distance `d0` |
+| `CSI_PATH_LOSS_N` | `3.0` | log-distance path-loss exponent `n` |
+
+RSSI ranging calibration: measure `R0` at a known distance `d0` (e.g. 1 m)
+and set both; see `docs/SIGNAL-MODELING.md` for a two-point fit of `n`.
 
 ## 9. Live test with the ESP32-S3
 
 1. `python main.py --host localhost` and keep `idf.py monitor` running.
 2. Subject sits still, 0.5-2 m from the ESP32, in line of sight.
 3. After ~15 s the window fills and estimates appear.
-4. Motion artifacts: a single movement resets the estimates for a few seconds.
+4. Motion artifacts: a single movement resets the vitals estimates for a few seconds, and the **Body row** switches to `Moving` while you move.
 
 ## 10. Troubleshooting
 
@@ -181,6 +204,7 @@ The GUI should show **~66 BPM / ~18 resp/min** and both waveforms within ~15 s.
 | `captured` stays 0 | No RX traffic: keep `USE_TRAFFIC_PING 1`, or run `ping -t <ESP32_IP>` from any machine on the network. |
 | Build error inside `start_traffic_ping` | Your IDF ping API differs - set `USE_TRAFFIC_PING 0` in `config.h` and use an external ping instead. |
 | BPM shows "-" | SNR below threshold: shorten distance, remove motion, try `--window 20` for a longer window. |
+| Body row stuck on "waiting for data..." | Motion window (15 s) still filling, or the CSI stream is not reaching the backend; check the pkt/s rate in the status bar. |
 | `idf.py: command not found` | Run `idfenv` (or `source ~/esp/esp-idf/export.fish`) in this tab — in bash: `. ~/esp/esp-idf/export.sh`. |
 
 ## 11. Security notes

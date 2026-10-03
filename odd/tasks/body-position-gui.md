@@ -40,9 +40,9 @@ multi-antenna / multi-device geometry), with references.
 | 1 | Motion/presence analysis module + config + tests | done | commit 0c0742d on feature/body-position-gui; 12/12 backend tests pass (numpy/scipy/pytest installed in WSL via --break-system-packages; PEP 668 note). MotionEstimate(state, motion_rms, window_std, rssi_dbm, distance_m, n_samples); env knobs CSI_ABSENT_STD/CSI_MOVING_RMS/CSI_RSSI_REF_DBM/CSI_REF_DISTANCE_M/CSI_PATH_LOSS_N |
 | 2 | GUI body-position panel + physics graphs with mathtext formulas | done | commit fca5d8f; 2x3 figure, Body row, heatmap/spectrogram/motion panels, formulas in mathtext |
 | 3 | Simulator scenarios (resting/moving/absent) | done | commit 462c4d0; functional check vs real MotionAnalyzer: resting→Still, moving→Moving during episodes, absent→Absent; py_compile OK; backend 12/12 tests pass |
-| 4 | Docs: SIGNAL-MODELING.md + PROJECT-ARCHITECTURE.md + README with references | done | SIGNAL-MODELING.md: 10 sections, 27-row provenance table, 15 math blocks, 10 verified references; PROJECT-ARCHITECTURE.md (Spanish) new GUI/position section; README scenarios+docs row. Pending: docs work-unit commit |
+| 4 | Docs: SIGNAL-MODELING.md + PROJECT-ARCHITECTURE.md + README + DEPLOYMENT.md | done | SIGNAL-MODELING.md: 10 sections, 27-row provenance table, 15 math blocks, 10 verified references; PROJECT-ARCHITECTURE.md (Spanish) new GUI/position section; README scenarios+docs row; DEPLOYMENT.md updated with scenarios, Body row and calibration env vars |
 | 5 | Verification (pytest + py_compile) + work-unit commits | pending | one commit per task on feature/body-position-gui |
-| 6 | Native review (RDD on) + close report | pending | gentle_review inspect → start → consent → capture |
+| 6 | Native review (RDD on) + close report | in_progress | lineage review-ea72262693c65479 created (tier high, 4 lenses, budget 200, state reviewing, target cf74f8d3...) after managed-assets sync; reviewer group relay timed out at ~957 s (0 submitted) — resume with single-slot captures after raising GENTLE_PI_REVIEW_RELAY_PI_TIMEOUT_MS or splitting the candidate scope |
 
 ## Reference data (verified via web search)
 
@@ -59,3 +59,4 @@ multi-antenna / multi-device geometry), with references.
 - `cd backend && python3 -m pytest tests -q` → 12 passed (6 pre-existing + 6 motion) on Python 3.14 with numpy 2.5.3 / scipy 1.18.1 / pytest 9.1.1.
 - `python3 -m py_compile` OK on motion_analyzer.py, config.py, gui.py, main.py, simulate_esp32.py.
 - Simulator scenarios functionally checked against real MotionAnalyzer: resting → Still, moving → Moving during episodes, absent → Absent.
+- DEPLOYMENT.md verified against docker-compose.yaml (container_name wifisensing_mosquitto, port 1883), mosquitto.conf (allow_anonymous true), requirements.txt pins and main.py CLI flags.
