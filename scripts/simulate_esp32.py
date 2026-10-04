@@ -32,6 +32,28 @@ import time
 import numpy as np
 import paho.mqtt.client as mqtt
 
+# Scenario amplitude constants: the resting baseline is shared by the
+# resting/moving scenarios and the noise floor by all three (review
+# follow-up R2-scenario-baseline-duplication).
+BASELINE_AMP = 30.0
+RESP_SWING = 3.0
+HEART_SWING = 0.9
+NOISE_STD = 0.05
+
+# Motion-offset decay time constant (moving scenario).  tau ~ 0.95 s
+# reproduces the original 0.90-per-packet decay at the default 10 Hz
+# publish rate, but stays correct at any --rate (review follow-up
+# R2-decay-rate-coupling).
+MOTION_DECAY_TAU_S = 0.95
+
+
+def resting_baseline(t, args, rng, resp_phase, heart_phase):
+    """Resting-scenario amplitudes: baseline plus respiration/heart sines."""
+    return (BASELINE_AMP
+            + RESP_SWING * np.sin(2 * np.pi * args.resp_hz * t + resp_phase)
+            + HEART_SWING * np.sin(2 * np.pi * args.heart_hz * t + heart_phase)
+            + rng.normal(0.0, NOISE_STD, args.subcarriers))
+
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Publish synthetic CSI packets")
@@ -81,7 +103,8 @@ def main() -> None:
             in_episode = False
             if moving:
                 if episode_start_s is None:
-                    motion_offset *= 0.90  # decay residual offset (~10 Hz rate)
+                    # Time-based exponential decay: independent of --rate.
+                    motion_offset *= np.exp(-period / MOTION_DECAY_TAU_S)
                     if t >= next_episode_s:
                         episode_start_s = t
                         next_episode_s = (t + episode_period_s
@@ -93,12 +116,9 @@ def main() -> None:
                     episode_start_s = None  # episode over: offset decays
 
             if args.scenario == "absent":
-                amps = 30.0 + rng.normal(0.0, 0.05, args.subcarriers)
+                amps = BASELINE_AMP + rng.normal(0.0, NOISE_STD, args.subcarriers)
             else:
-                amps = (30.0
-                        + 3.0 * np.sin(2 * np.pi * args.resp_hz * t + resp_phase)
-                        + 0.9 * np.sin(2 * np.pi * args.heart_hz * t + heart_phase)
-                        + rng.normal(0.0, 0.05, args.subcarriers))
+                amps = resting_baseline(t, args, rng, resp_phase, heart_phase)
                 if moving:
                     amps = amps + motion_offset
 
