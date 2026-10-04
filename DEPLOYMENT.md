@@ -200,6 +200,11 @@ The same estimates are also served to any browser on the LAN — no app
 install on the phone. The viewer is an independent MQTT consumer, so it
 works with or without the desktop GUI running.
 
+Its one new dependency is **aiohttp** (HTTP + WebSocket server, Apache 2.0;
+<https://docs.aiohttp.org/>) — already covered by `pip install -r
+requirements.txt`, nothing extra to install. The page itself ships zero
+external assets (no CDN), so it works on LANs without internet.
+
 On the machine that reaches the broker (same venv as §8):
 
 ```powershell

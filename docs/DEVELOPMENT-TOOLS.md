@@ -73,6 +73,7 @@ Referencia única de: (1) qué herramientas usa cada capa y por qué, (2) la met
 | Paquete | Versión | Por qué esa versión |
 |---|---|---|
 | `paho-mqtt` | `>=1.6,<2.0` | La API 2.x rompió el constructor `Client()` usado por `mqtt_subscriber.py` |
+| `aiohttp` | `>=3.9` | Servidor HTTP + WebSocket del web viewer (`web_viewer.py`); mantiene el viewer sin Qt y apto para PyInstaller |
 | `numpy` | `>=1.24,<3.0` | FFT (`np.fft.rfft`) y arreglos |
 | `scipy` | `>=1.10` | `signal.butter/sosfiltfilt` (filtros) y `signal.detrend` |
 | `PyQt5` | `>=5.15` | GUI y event loop |
@@ -352,6 +353,7 @@ Si algún día hace falta robustez que el DSP puro no da (mucho movimiento, ambi
 - Cooley, J. W. y Tukey, J. W. (1965), "An algorithm for the machine calculation of complex Fourier series", *Mathematics of Computation* 19(90), 297–301 — el artículo original de la FFT.
 - NumPy FFT (documentación de `rfft`/`rfftfreq`): <https://numpy.org/doc/stable/reference/routines.fft.html>
 - SciPy `signal` (`butter`, `sosfiltfilt`, `detrend`): <https://docs.scipy.org/doc/scipy/reference/signal.html>
+- aiohttp (servidor HTTP + WebSocket del web viewer): <https://docs.aiohttp.org/> — licencia Apache 2.0
 
 **WiFi sensing / CSI:**
 
