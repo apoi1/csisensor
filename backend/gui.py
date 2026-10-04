@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (QApplication, QHBoxLayout, QLabel, QMainWindow,
 from scipy import signal as sps
 
 from vitals_processor import VitalsEstimate, VitalsProcessor
+from motion_analyzer import MOTION_BAND_HZ
 
 # Motion-energy history length in the bottom-right panel (seconds).
 _MOTION_HISTORY_S = 600.0
@@ -53,10 +54,9 @@ class VitalsWindow(QMainWindow):
         root.addWidget(self.lbl_body)
         root.addWidget(self.lbl_meta)
 
-        # Display mirror of the current CSI window for the physics panels
-        # (rows of per-packet amplitudes; same capacity as the processor).
-        self._disp_times: deque = deque(maxlen=self.proc.capacity)
-        self._disp_rows: deque = deque(maxlen=self.proc.capacity)
+        # Physics panels read VitalsProcessor.current_matrix() directly — no
+        # parallel display mirror of the window (single source of truth,
+        # review follow-up R2-triple-push-mirror).
         self._motion_history: deque = deque()  # (t_monotonic, motion_rms)
         self.img_heat = None
         self.img_spec = None
@@ -81,8 +81,10 @@ class VitalsWindow(QMainWindow):
         self.ax_heat.set_title(r"$|H_k|=\sqrt{I_k^2+Q_k^2}$")
         self.ax_spec.set_title(
             r"$X(\tau,f)=\sum_n x[n]\,w[n-\tau]\,e^{-j2\pi fn/N}$")
+        motion_lo, motion_hi = MOTION_BAND_HZ
         self.ax_motion.set_title(
-            r"$M_\mathrm{rms}=\sqrt{\langle b^2(t)\rangle}$, band 0.5\u20133.0 Hz")
+            r"$M_\mathrm{rms}=\sqrt{\langle b^2(t)\rangle}$"
+            f", band {motion_lo:g}\u2013{motion_hi:g} Hz")
         for ax in (self.ax_raw, self.ax_resp, self.ax_heart, self.ax_heat,
                    self.ax_spec, self.ax_motion):
             ax.set_xlabel("t [s]")
@@ -132,10 +134,8 @@ class VitalsWindow(QMainWindow):
 
         for p in packets:
             t_s = p.t_us / 1e6
-            self.proc.push(t_s, p.amps)
-            self.motion.push(t_s, p.amps, p.rssi)
-            self._disp_times.append(t_s)
-            self._disp_rows.append(p.amps)
+            self.proc.push(t_s, p.amps)          # single window ingest: the
+            self.motion.push(t_s, p.amps, p.rssi)  # physics panels read proc
 
         self._redraw_raw()
 
@@ -224,11 +224,10 @@ class VitalsWindow(QMainWindow):
 
     def _redraw_heatmap(self):
         """Subcarrier heatmap: 20*log10(|H_k| + eps) over the current window."""
-        if len(self._disp_rows) < 2:
+        window = self.proc.current_matrix()
+        if window is None:
             return
-        matrix = np.vstack(self._disp_rows)      # (time, subcarrier)
-        t = np.asarray(self._disp_times, dtype=float)
-        t_rel = t - t[0]
+        t_rel, matrix = window                   # (time, subcarrier)
         db = 20.0 * np.log10(matrix.T + 1e-9)    # (subcarrier, time) = (y, x)
         n_sub = matrix.shape[1]
         extent = (t_rel[0], t_rel[-1], n_sub - 1, 0)
@@ -244,9 +243,10 @@ class VitalsWindow(QMainWindow):
 
     def _redraw_spectrogram(self):
         """Spectrogram of the window's mean amplitude with physiological bands."""
-        if len(self._disp_rows) < 2:
+        window = self.proc.current_matrix()
+        if window is None:
             return
-        matrix = np.vstack(self._disp_rows)
+        _, matrix = window
         x = matrix.mean(axis=1)                  # same series as the raw panel
         fs = self.cfg.sample_rate_hz
         nperseg = min(64, x.size)

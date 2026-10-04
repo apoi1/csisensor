@@ -79,3 +79,36 @@ def test_parse_csi_payload_malformed():
     assert parse_csi_payload(b"not-a-payload") is None
     assert parse_csi_payload(b"1,2,0,3") is None        # n = 0
     assert parse_csi_payload(b"1,2,3,4,5") is None       # missing subcarriers
+
+
+def test_subcarrier_count_change_resets_window():
+    # R4-gui-vstack-crash: a publisher restart with a different subcarrier
+    # count must reset the window instead of letting ragged rows reach the
+    # consumers' vstack.
+    t, m = synth_matrix()
+    p = VitalsProcessor(fs=FS, window_s=WINDOW_S)
+    for i in range(20):
+        p.push(t[i], m[i])
+    assert p.fill() == 20
+    p.push(t[20], m[20][:16])   # width 32 -> 16: window resets, no ragged rows
+    assert p.fill() == 1
+    assert p.ready() is False
+    assert p.estimate() is None
+
+
+def test_current_matrix_is_the_panels_single_source():
+    # R2-triple-push-mirror: the physics panels read this exact window; the
+    # GUI keeps no parallel mirror.
+    t, m = synth_matrix()
+    p = VitalsProcessor(fs=FS, window_s=WINDOW_S)
+    for i in range(20):
+        p.push(t[i], m[i])
+    window = p.current_matrix()
+    assert window is not None
+    t_rel, matrix = window
+    assert matrix.shape == (20, 32)
+    np.testing.assert_allclose(matrix, m[:20])
+    assert t_rel[0] == 0.0
+    q = VitalsProcessor(fs=FS, window_s=WINDOW_S)
+    q.push(t[0], m[0])          # fewer than two rows: no window yet
+    assert q.current_matrix() is None

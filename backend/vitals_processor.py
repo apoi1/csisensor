@@ -58,6 +58,13 @@ class VitalsProcessor:
         amps = np.asarray(amplitudes, dtype=float).ravel()
         if amps.size == 0:
             return
+        if self._rows and amps.size != self._rows[-1].size:
+            # Subcarrier count changed (e.g. a publisher restart with a
+            # different n): a mixed-width window cannot be vstacked and is
+            # physically a different link, so start a fresh window instead
+            # of crashing the consumers (review follow-up R4-gui-vstack-crash).
+            self._times.clear()
+            self._rows.clear()
         self._times.append(float(t_s))
         self._rows.append(amps)
 
@@ -74,6 +81,19 @@ class VitalsProcessor:
         matrix = np.vstack(self._rows)
         t = np.asarray(self._times, dtype=float)
         return t - t[0], matrix.mean(axis=1)
+
+    def current_matrix(self):
+        """Live (t_relative_s, per_subcarrier_amplitudes) window.
+
+        Single source for the raw panel and the physics panels (heatmap,
+        spectrogram): the GUI keeps no parallel mirror of this state
+        (review follow-up R2-triple-push-mirror).  Rows are width-locked
+        by push(), so the vstack can never be ragged.
+        """
+        if len(self._rows) < 2:
+            return None
+        t = np.asarray(self._times, dtype=float)
+        return t - t[0], np.vstack(self._rows)
 
     # -------------------------------------------------------------- estimation
     def estimate(self) -> "VitalsEstimate | None":
