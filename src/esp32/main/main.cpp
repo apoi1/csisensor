@@ -116,8 +116,12 @@ static void publisher_task(void *arg)
      * id, stable across reboots) so several ESP32s never collide on the
      * broker; the backend routes each device to its own DSP pipeline. */
     char topic_csi[48];
-    uint8_t mac[6];
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    uint8_t mac[6] = {0};
+    if (esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK) {
+        /* Review finding R3-13: never trust an unchecked return - a zero
+         * id still yields a valid, unique-ish topic instead of garbage. */
+        ESP_LOGE(TAG, "esp_read_mac failed; using zero device id");
+    }
     snprintf(topic_csi, sizeof(topic_csi), "%s/%02x%02x%02x/csi/raw",
              MQTT_TOPIC_PREFIX, mac[3], mac[4], mac[5]);
     ESP_LOGI(TAG, "publishing CSI to topic %s", topic_csi);

@@ -59,7 +59,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Publish synthetic CSI packets")
     ap.add_argument("--host", default="localhost")
     ap.add_argument("--port", type=int, default=1883)
-    ap.add_argument("--topic", default="esp32/csi/raw")
+    ap.add_argument("--topic", default=None,
+                    help="CSI topic; an explicit --topic wins over --device-id "
+                         "(default: esp32/csi/raw, or esp32/<device-id>/csi/raw "
+                         "when --device-id is given)")
     ap.add_argument("--device-id", default=None,
                     help="publish as a per-device link (esp32/<id>/csi/raw) "
                          "to dry-run multi-ESP32 setups")
@@ -91,8 +94,11 @@ def main() -> None:
     client = mqtt.Client(client_id="csi-simulator")
     client.connect(args.host, args.port, keepalive=60)
     client.loop_start()
-    if args.device_id and args.topic == "esp32/csi/raw":
-        args.topic = f"esp32/{args.device_id}/csi/raw"
+    if args.topic is None:
+        args.topic = (f"esp32/{args.device_id}/csi/raw" if args.device_id
+                      else "esp32/csi/raw")
+    elif args.device_id:
+        print("note: --device-id ignored because an explicit --topic was given")
 
     print(f"publishing synthetic CSI to {args.host}:{args.port}/{args.topic} "
           f"({args.rate} Hz, {args.subcarriers} subcarriers, "

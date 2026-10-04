@@ -38,6 +38,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_TOPIC_PATTERNS = ("esp32/+/csi/raw", "esp32/csi/raw")
 
 
+# Hard cap on live pipelines: malformed or adversarial topics cannot grow
+# the link registry (and backend memory) without bound (review finding R3-5).
+MAX_LINKS = 16
+
+
 def link_id_from_topic(topic: str) -> str:
     """Device id of a CSI topic: esp32/<id>/csi/raw -> <id>.
 
@@ -53,25 +58,16 @@ def link_id_from_topic(topic: str) -> str:
 
 
 class MultiLinkSubscriber(CsiSubscriber):
-    """CsiSubscriber variant that subscribes several topic patterns and tags
-    every parsed packet with its link id (queue holds (link_id, packet))."""
+    """CsiSubscriber that tags every parsed packet with its link id.
+
+    The parent subscribes every topic pattern natively (R3-1: no hidden
+    single-topic state passed to the constructor); this subclass only
+    re-tags the queue payload as (link_id, packet) so each device keeps
+    its own pipeline.
+    """
 
     def __init__(self, host: str, port: int, topics, max_queue: int = 1024):
-        patterns = tuple(topics) if isinstance(topics, (list, tuple)) else (topics,)
-        # The parent stores `topic` for its own subscribe callback; we
-        # override _on_connect below, so only the client plumbing is reused.
-        super().__init__(host, port, patterns[0], max_queue)
-        self._patterns = patterns
-
-    def _on_connect(self, client, userdata, flags, rc):
-        self._connected = (rc == 0)
-        if self._connected:
-            for pattern in self._patterns:
-                client.subscribe(pattern, qos=0)
-            logger.info("MQTT connected, subscribed to %s",
-                        ", ".join(self._patterns))
-        else:
-            logger.warning("MQTT connect refused rc=%s", rc)
+        super().__init__(host, port, tuple(topics), max_queue)
 
     def _on_message(self, client, userdata, msg):
         packet = parse_csi_payload(msg.payload)
@@ -109,6 +105,10 @@ class LinkManager:
     def _pipelines(self, link_id: str):
         pair = self._links.get(link_id)
         if pair is None:
+            if len(self._links) >= MAX_LINKS:
+                logger.warning("link registry full (%d links); dropping packets"
+                               " from unknown link %r", MAX_LINKS, link_id)
+                return None
             pair = (
                 VitalsProcessor(fs=self.cfg.sample_rate_hz,
                                 window_s=self.cfg.window_seconds,
@@ -147,8 +147,15 @@ class LinkManager:
 
     # ------------------------------------------------------------------ input
     def ingest(self, link_id: str, packets) -> int:
-        """Push packets straight into one link's pipelines (test-friendly)."""
-        proc, motion = self._pipelines(link_id)
+        """Push packets straight into one link's pipelines (test-friendly).
+
+        Returns how many packets were stored; 0 when the link registry is
+        full and the link is unknown (packets dropped, never mixed).
+        """
+        pair = self._pipelines(link_id)
+        if pair is None:
+            return 0
+        proc, motion = pair
         for pkt in packets:
             proc.push(pkt.t_s, pkt.amps)
             motion.push(pkt.t_s, pkt.amps, pkt.rssi)
@@ -158,8 +165,7 @@ class LinkManager:
         """Drain the subscriber and route every packet to its link."""
         count = 0
         for link_id, pkt in self.sub.drain_tagged(limit):
-            self.ingest(link_id, (pkt,))
-            count += 1
+            count += self.ingest(link_id, (pkt,))
         return count
 
     # ---------------------------------------------------------------- fusion

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from config import Config
-from link_manager import LinkManager, link_id_from_topic
+from link_manager import MAX_LINKS, LinkManager, MultiLinkSubscriber, link_id_from_topic
 from motion_analyzer import PresenceState
 
 FS = 10.0
@@ -110,6 +110,27 @@ def test_partial_window_fused_estimate_is_none():
     assert links.estimate() is None
     assert links.motion_estimate() is None
     assert links.fill() == 20
+
+
+def test_link_registry_caps_malformed_topics():
+    # R3-5: unknown topic layouts must not grow the link registry (and
+    # memory) without bound; known links keep working past the cap.
+    links = make_manager()
+    pkts = synth_packets()[:5]
+    links.ingest("real-link", pkts)
+    for i in range(30):
+        links.ingest(f"junk/topic/{i}", pkts)      # unknown layout -> full topic id
+    assert links.n_links() == MAX_LINKS
+    assert "real-link" in links.link_ids()
+    assert links.ingest("beyond-the-cap", pkts) == 0   # dropped, never mixed
+    assert links.n_links() == MAX_LINKS
+
+
+def test_subscriber_holds_every_pattern():
+    # R3-1: the subscriber registers exactly the patterns it will
+    # subscribe - no hidden single-topic state in the parent.
+    sub = MultiLinkSubscriber("localhost", 1883, ("esp32/+/csi/raw", "esp32/csi/raw"))
+    assert sub._topics == ("esp32/+/csi/raw", "esp32/csi/raw")
 
 
 def test_fusion_reports_none_when_best_link_fails_gate():

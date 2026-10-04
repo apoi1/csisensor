@@ -15,8 +15,12 @@ logger = logging.getLogger(__name__)
 class CsiSubscriber:
     """Subscribes to the CSI topic and buffers parsed packets in a queue."""
 
-    def __init__(self, host: str, port: int, topic: str, max_queue: int = 1024):
-        self._host, self._port, self._topic = host, port, topic
+    def __init__(self, host: str, port: int, topic, max_queue: int = 1024):
+        self._host, self._port = host, port
+        # One topic string or several patterns (multi-ESP32 links): the
+        # subscriber registers exactly what it will subscribe to - no
+        # hidden single-topic state (review finding R3-1).
+        self._topics = tuple(topic) if isinstance(topic, (list, tuple)) else (topic,)
         self._queue: "queue.Queue" = queue.Queue(maxsize=max_queue)
         self._connected = False
         self._dropped = 0
@@ -41,8 +45,9 @@ class CsiSubscriber:
     def _on_connect(self, client, userdata, flags, rc):
         self._connected = (rc == 0)
         if self._connected:
-            client.subscribe(self._topic, qos=0)
-            logger.info("MQTT connected, subscribed to %s", self._topic)
+            for topic in self._topics:
+                client.subscribe(topic, qos=0)
+            logger.info("MQTT connected, subscribed to %s", ", ".join(self._topics))
         else:
             logger.warning("MQTT connect refused rc=%s", rc)
 
