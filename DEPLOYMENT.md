@@ -33,6 +33,12 @@ docker compose up -d          # starts mosquitto on 1883
 docker compose logs mosquitto # verify: "mosquitto version 2.x running"
 ```
 
+The broker also listens on **9001 (MQTT over WebSockets)** — mapped by
+docker-compose and enabled in `mosquitto.conf`. The bundled web viewer
+(§9) does not use it; it is there for future browser clients that talk to
+the broker directly. After editing `mosquitto.conf`, apply it with
+`docker compose restart mosquitto`.
+
 Publish a test message to validate the chain:
 
 ```console
@@ -188,17 +194,45 @@ GUI then shows `—` for the link distance instead of an uncalibrated guess.
 RSSI ranging calibration: measure `R0` at a known distance `d0` (e.g. 1 m)
 and set both; see `docs/SIGNAL-MODELING.md` for a two-point fit of `n`.
 
-## 9. Live test with the ESP32-S3
+## 9. Web viewer (phones / tablets)
+
+The same estimates are also served to any browser on the LAN — no app
+install on the phone. The viewer is an independent MQTT consumer, so it
+works with or without the desktop GUI running.
+
+On the machine that reaches the broker (same venv as §8):
+
+```powershell
+python web_viewer.py --broker <BROKER_IP> --host 0.0.0.0 --port 8080
+```
+
+- `--broker`: where MQTT lives (`localhost` if this machine runs Docker).
+- `--host 0.0.0.0` binds the page to the LAN (default); `--port 8080`.
+- Open `http://<PC-LAN-IP>:8080` on the phone, same Wi-Fi.
+
+Allow the port through Windows Firewall once (admin PowerShell):
+
+```powershell
+New-NetFirewallRule -DisplayName "CSI Web Viewer 8080 (dev)" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow
+```
+
+The page needs no internet (no CDN): tiles for heart/respiration/body
+state/link distance, a 10-minute trend plot and the latest filtered
+waves, with automatic reconnect. Like everything here: research tool,
+not a medical device.
+
+## 10. Live test with the ESP32-S3
 
 1. `python main.py --host localhost` and keep `idf.py monitor` running.
 2. Subject sits still, 0.5-2 m from the ESP32, in line of sight.
 3. After ~15 s the window fills and estimates appear.
 4. Motion artifacts: a single movement resets the vitals estimates for a few seconds, and the **Body row** switches to `Moving` while you move.
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
+| Phone cannot open the viewer page | same Wi-Fi? `http://<PC-LAN-IP>:8080` correct? Windows Firewall rule for 8080 (§9)? `web_viewer.py` still running? |
 | `ls /dev/ttyACM*` empty | Re-run `usbipd attach`; check the cable is data-capable; `usbipd list` must show "Attached". |
 | WiFi connects and reconnects forever | SSID is 5 GHz only - use 2.4 GHz; check credentials. |
 | `MQTT connected` never appears | Broker URI uses `localhost` (only valid on Windows itself); check the firewall rule for 1883; Docker Desktop must be running. |
@@ -211,7 +245,7 @@ and set both; see `docs/SIGNAL-MODELING.md` for a two-point fit of `n`.
 | Body row stuck on "waiting for data..." | Motion window (15 s) still filling, or the CSI stream is not reaching the backend; check the pkt/s rate in the status bar. |
 | `idf.py: command not found` | Run `idfenv` (or `source ~/esp/esp-idf/export.fish`) in this tab — in bash: `. ~/esp/esp-idf/export.sh`. |
 
-## 11. Security notes
+## 12. Security notes
 
 - `mosquitto.conf` allows **anonymous** connections: LAN/dev use only. For anything shared, add `password_file` and `allow_anonymous false`.
 - WiFi credentials live in `config.h` - never commit real ones; keep a private copy or inject them via your build system.

@@ -3,4 +3,5 @@ numpy>=1.24,<3.0
 scipy>=1.10
 PyQt5>=5.15
 matplotlib>=3.7
+aiohttp>=3.9
 pytest>=7.4

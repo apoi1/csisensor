@@ -7,6 +7,7 @@ signal processing.
 
 ```
 ESP32-S3 firmware (C++/ESP-IDF) ──MQTT──► Mosquitto (Docker) ◄── Python backend (paho-mqtt + scipy FFT) ──► PyQt5 GUI (vitals + body presence/motion)
+                                                       └──► Web viewer (backend/web_viewer.py → any phone browser on the LAN)
 ```
 
 > Research/educational project. **Not a medical device.**
@@ -17,6 +18,7 @@ ESP32-S3 firmware (C++/ESP-IDF) ──MQTT──► Mosquitto (Docker) ◄──
 |---|---|
 | `src/esp32/` | ESP-IDF v5.x firmware: native CSI capture -> queue -> MQTT publish |
 | `backend/` | Python: MQTT subscriber, FFT vitals processor + motion analyzer, PyQt5 GUI (real-time heart rate, respiration, body presence/motion "Body" row; physics panels: subcarrier heatmap, spectrogram, motion energy — with formula annotations), unit tests |
+| `backend/web_viewer.py` + `backend/web_static/` | Standalone LAN web viewer: same DSP served to phone browsers (aiohttp + WebSocket; no app install, no CDN) |
 | `scripts/simulate_esp32.py` | Synthetic CSI publisher to test the backend without hardware |
 | `docker-compose.yaml` + `docker/mosquitto/` | Local Mosquitto broker |
 | `DEPLOYMENT.md` | **Step-by-step deployment guide (WSL + Windows)** |
@@ -29,9 +31,10 @@ ESP32-S3 firmware (C++/ESP-IDF) ──MQTT──► Mosquitto (Docker) ◄──
 1. `docker compose up -d` (broker)
 2. Configure `src/esp32/main/config.h` (WiFi + broker IP)
 3. Build/flash from WSL: `idf.py set-target esp32s3 && idf.py build && idf.py -p /dev/ttyACM0 flash monitor`
-4. Windows: `cd backend && python -m venv .venv && .\.venv\Scripts\Activate && pip install -r requirements.txt`
+4. Windows: `cd backend && python -m venv .venv && .\.venv\Scripts\Activate.ps1 && pip install -r requirements.txt`
 5. Dry-run: `python ..\scripts\simulate_esp32.py --scenario moving` + `python main.py` (scenario options: `resting`, `moving`, `absent`)
-6. Live: see `DEPLOYMENT.md`
+6. Phone view: `python web_viewer.py` and open `http://<PC-LAN-IP>:8080` on any phone on the same Wi-Fi (DEPLOYMENT.md §9)
+7. Live: see `DEPLOYMENT.md`
 
 ## Signal processing
 
