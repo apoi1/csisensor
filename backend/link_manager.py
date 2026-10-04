@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import logging
 import queue
+import threading
+import time
 
 from motion_analyzer import MotionAnalyzer, MotionEstimate, PresenceState
 from mqtt_subscriber import CsiSubscriber
@@ -40,7 +42,13 @@ DEFAULT_TOPIC_PATTERNS = ("esp32/+/csi/raw", "esp32/csi/raw")
 
 # Hard cap on live pipelines: malformed or adversarial topics cannot grow
 # the link registry (and backend memory) without bound (review finding R3-5).
+# When full, the STALEST link is evicted (LRU) so a stream of transient
+# devices can never permanently lock new ones out (review finding R4-1).
 MAX_LINKS = 16
+# A link that has not received packets for this long stops contributing to
+# fusion (a dead node keeps a full window with a frozen, historically
+# high-SNR estimate that would otherwise win forever; review finding R4-2).
+LINK_STALE_S = 20.0
 
 
 def link_id_from_topic(topic: str) -> str:
@@ -95,7 +103,12 @@ class LinkManager:
     def __init__(self, cfg, subscriber=None):
         self.cfg = cfg
         self._links: dict = {}          # link_id -> (VitalsProcessor, MotionAnalyzer)
+        self._last_seen: dict = {}      # link_id -> last ingest time (staleness)
         self._primary: str | None = None  # heart-winning link (panels follow it)
+        self._evictions = 0
+        self._lock = threading.Lock()   # guards _links/_last_seen/_primary
+                                        # across ingest and consumer threads
+                                        # (review finding R3-LinkManagerThreadSafety)
         self.sub = subscriber if subscriber is not None else \
             MultiLinkSubscriber(cfg.mqtt_host, cfg.mqtt_port,
                                 getattr(cfg, "topic_patterns",
@@ -106,9 +119,19 @@ class LinkManager:
         pair = self._links.get(link_id)
         if pair is None:
             if len(self._links) >= MAX_LINKS:
-                logger.warning("link registry full (%d links); dropping packets"
-                               " from unknown link %r", MAX_LINKS, link_id)
-                return None
+                stalest = min(self._links, key=lambda lid: self._last_seen.get(lid, 0.0))
+                if time.time() - self._last_seen.get(stalest, 0.0) > LINK_STALE_S:
+                    logger.warning("link registry full (%d); evicting stale"
+                                   " link %r for %r", MAX_LINKS, stalest, link_id)
+                    self._links.pop(stalest, None)
+                    self._last_seen.pop(stalest, None)
+                    self._evictions += 1
+                else:
+                    # All live: an active real fleet must not be starved by a
+                    # flood of other live publishers - reject the newcomer.
+                    logger.warning("link registry full of LIVE links; dropping"
+                                   " packets from unknown link %r", link_id)
+                    return None
             pair = (
                 VitalsProcessor(fs=self.cfg.sample_rate_hz,
                                 window_s=self.cfg.window_seconds,
@@ -124,6 +147,7 @@ class LinkManager:
                                path_loss_exponent=self.cfg.path_loss_exponent),
             )
             self._links[link_id] = pair
+        self._last_seen[link_id] = time.time()
         return pair
 
     def link_ids(self):
@@ -145,14 +169,21 @@ class LinkManager:
         proc = self._primary_proc()
         return proc.capacity if proc is not None else 0
 
+    def evictions(self) -> int:
+        """How many stale links were evicted from the full registry."""
+        return self._evictions
+
     # ------------------------------------------------------------------ input
     def ingest(self, link_id: str, packets) -> int:
         """Push packets straight into one link's pipelines (test-friendly).
 
-        Returns how many packets were stored; 0 when the link registry is
-        full and the link is unknown (packets dropped, never mixed).
+        A full registry evicts a STALE link (LRU) for the newcomer; when
+        every link is live it rejects the new device instead of starving
+        the active fleet (review findings R4-1 / R3-SilentDropOnRegistryFull).
+        Returns 0 for rejected (unknown, live registry full) packets.
         """
-        pair = self._pipelines(link_id)
+        with self._lock:
+            pair = self._pipelines(link_id)
         if pair is None:
             return 0
         proc, motion = pair
@@ -169,35 +200,43 @@ class LinkManager:
         return count
 
     # ---------------------------------------------------------------- fusion
+    def _live_links(self):
+        """Links with fresh data (staleness gate; review finding R4-2)."""
+        now = time.time()
+        return [lid for lid in self._links
+                if now - self._last_seen.get(lid, now) <= LINK_STALE_S]
+
     def estimate(self) -> VitalsEstimate | None:
-        """Fused vitals: per-band max-SNR winner across ready links."""
-        candidates = []
-        for link_id, (proc, _motion) in self._links.items():
-            est = proc.estimate()
-            if est is not None:
-                candidates.append((link_id, est))
-        if not candidates:
-            return None
+        """Fused vitals: per-band max-SNR winner across ready, live links."""
+        with self._lock:
+            live = self._live_links()
+            candidates = []
+            for link_id in live:
+                est = self._links[link_id][0].estimate()
+                if est is not None:
+                    candidates.append((link_id, est))
+            if not candidates:
+                return None
 
-        heart_id, heart_est = max(
-            candidates, key=lambda c: c[1].heart_snr_db)
-        resp_id, resp_est = max(
-            candidates, key=lambda c: c[1].resp_snr_db)
-        self._primary = heart_id  # panels and ranging follow the heart link
+            heart_id, heart_est = max(
+                candidates, key=lambda c: c[1].heart_snr_db)
+            resp_id, resp_est = max(
+                candidates, key=lambda c: c[1].resp_snr_db)
+            self._primary = heart_id  # panels and ranging follow the heart link
 
-        return VitalsEstimate(
-            heart_bpm=heart_est.heart_bpm,
-            resp_pm=resp_est.resp_pm,
-            heart_snr_db=heart_est.heart_snr_db,
-            resp_snr_db=resp_est.resp_snr_db,
-            heart_subcarrier=heart_est.heart_subcarrier,
-            resp_subcarrier=resp_est.resp_subcarrier,
-            heart_wave=heart_est.heart_wave,
-            resp_wave=resp_est.resp_wave,
-            wave_times_s=heart_est.wave_times_s,
-            n_samples=heart_est.n_samples,
-            n_subcarriers=heart_est.n_subcarriers,
-        )
+            return VitalsEstimate(
+                heart_bpm=heart_est.heart_bpm,
+                resp_pm=resp_est.resp_pm,
+                heart_snr_db=heart_est.heart_snr_db,
+                resp_snr_db=resp_est.resp_snr_db,
+                heart_subcarrier=heart_est.heart_subcarrier,
+                resp_subcarrier=resp_est.resp_subcarrier,
+                heart_wave=heart_est.heart_wave,
+                resp_wave=resp_est.resp_wave,
+                wave_times_s=heart_est.wave_times_s,
+                n_samples=heart_est.n_samples,
+                n_subcarriers=heart_est.n_subcarriers,
+            )
 
     def motion_estimate(self):
         """Conservative presence aggregate across ready links.
@@ -207,10 +246,11 @@ class LinkManager:
         maximum across links (matches the "any link sees motion" semantics).
         """
         ready = []
-        for link_id, (_proc, motion) in self._links.items():
-            est = motion.estimate()
-            if est is not None:
-                ready.append((link_id, est))
+        with self._lock:
+            for link_id in self._live_links():
+                est = self._links[link_id][1].estimate()
+                if est is not None:
+                    ready.append((link_id, est))
         if not ready:
             return None
 
@@ -241,12 +281,14 @@ class LinkManager:
 
     # ------------------------------------------------------------- panels
     def current_matrix(self):
-        proc = self._primary_proc()
-        return proc.current_matrix() if proc is not None else None
+        with self._lock:
+            proc = self._primary_proc()
+            return proc.current_matrix() if proc is not None else None
 
     def current_window(self):
-        proc = self._primary_proc()
-        return proc.current_window() if proc is not None else None
+        with self._lock:
+            proc = self._primary_proc()
+            return proc.current_window() if proc is not None else None
 
     def _primary_proc(self):
         if not self._links:

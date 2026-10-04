@@ -164,10 +164,18 @@ def build_app(state: ViewerState) -> web.Application:
 # ----------------------------------------------------------------- feed loop
 def _feed_loop(state: ViewerState, links: LinkManager,
                every_s: float, stop: threading.Event) -> None:
-    """Drain the MQTT queue into the link pipelines; assemble ~1 Hz snapshots."""
+    """Drain the MQTT queue into the link pipelines; assemble ~1 Hz snapshots.
+
+    An exception in one iteration must never kill the feed thread silently
+    and leave the page showing stale data (review finding R4-3): log and
+    continue.
+    """
     while not stop.is_set():
-        links.drain_and_feed(256)
-        state.maybe_estimate(time.time(), every_s)
+        try:
+            links.drain_and_feed(256)
+            state.maybe_estimate(time.time(), every_s)
+        except Exception:
+            logger.exception("web viewer feed iteration failed; continuing")
         stop.wait(0.1)
 
 
