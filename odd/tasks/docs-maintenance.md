@@ -16,8 +16,9 @@ GitHub remote (no contribution guide, no changelog, no versioning notes).
 | 1 | DEVELOPMENT-TOOLS.md accuracy fixes | done | 6/6 → 32/32 with suite inventory; 11 → 12 secciones; footer updated |
 | 2 | CONTRIBUTING.md | done | setup, checks, workflow, maintenance policy (versioning, issues, secrets, docs accuracy, firmware conventions), bug-report template |
 | 3 | CHANGELOG.md | done | Keep-a-Changelog format; Unreleased history reconstructed from git log (viewer, hardening, body-position, review fixes, initial pipeline) |
-| 4 | Native review (RDD on) of the committed range | pending | expect docs-only tier |
+| 4 | Native review (RDD on) of the committed range | done | Lineage review-c33ce6305ce0bce5: tier low, non_executable_only, ZERO lenses, auto-approved at START; acknowledge-approved burned authority (revision sha256:54f7b66e…, evidence gentle-ai.review-acknowledged/v1) |
 
 ## Verification evidence
 
-(pending)
+- Docs-only range 9aaf37b → 1059d9c (4 files, 141 lines): CONTRIBUTING.md, CHANGELOG.md, DEVELOPMENT-TOOLS.md fixes, this doc.
+- Native review auto-approved (tier low, zero lenses) and authority burned; no correction consumed.
