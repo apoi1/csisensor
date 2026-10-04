@@ -49,7 +49,17 @@ config change:
 | 5 | Firmware per-device topic (config.h + main.cpp) | done | MQTT_TOPIC_PREFIX + eFuse MAC id via esp_read_mac; compiles on user side (no idf.py in this WSL) |
 | 6 | Tests: routing isolation, per-band fusion, presence aggregate, flat-topic compat | done | 8 new tests (routing, isolation, fusion, aggregate, empty/partial, flat-gate); suite 40/40 in 2.1 s |
 | 7 | Docs: DEPLOYMENT multi-node subsection, README, CHANGELOG, SIGNAL-MODELING §11 | done | §8 Multi-device links (theory + design + fusion math); DEPLOYMENT §10 multi-node dry-run; README rows; CHANGELOG |
-| 8 | Native review (RDD on) + merge | pending | |
+| 8 | Native review (RDD on) + merge | pending | first transaction review-4ab1b9c40a939b06 ESCALATED terminal (native_stop_required): 4 lenses + refuter captured; refuter refuted R3-3 with proof; 5 findings unknown-causality -> maintainer inspection done, graded in this doc; fresh transaction started after the hardening commit |
+| 9 | Hardening follow-up (R3-1, R3-5, R3-12, R3-13) | done | commit f01f169: native multi-pattern subscriber state, MAX_LINKS=16 registry cap, simulator --topic precedence + note, firmware esp_read_mac check; 42/42 tests |
+| 10 | Fresh native review of the corrected range + merge | pending | new transaction over fa606ce..f01f169 |
+
+## Maintainer grading of the escalated review (2026-10-04)
+
+The reliability lens (nemotron-3-ultra-550b) produced 16 findings; the refuter refuted R3-3 with proof. Graded:
+- **Fixed in f01f169**: R3-1 (BLOCKER - dead single-topic state in the subscriber chain), R3-5 (unbounded link registry), R3-12 (silent --device-id ignore), R3-13 (unchecked esp_read_mac).
+- **Wrong premise (no action)**: R3-2/R3-3/R3-8/R3-9 family - VitalsProcessor.estimate() already returns None until the window is full, so partial-window estimates cannot be fused; the refuter proved R3-3.
+- **Theoretical (no action)**: R3-15 (_primary is only ever set from existing links, so the claimed race cannot occur).
+- **Advisory, separate later work**: R3-6/R3-7/R3-16 (test depth suggestions), R3-10/R3-11 (--topic replacing the legacy pattern is by design, documented), R3-14 (snprintf safe by construction).
 
 ## Verification evidence
 
