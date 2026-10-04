@@ -56,8 +56,19 @@ class VitalsProcessor:
     # ------------------------------------------------------------------ input
     def push(self, t_s: float, amplitudes) -> None:
         amps = np.asarray(amplitudes, dtype=float).ravel()
-        if amps.size == 0:
-            return
+        if amps.size == 0 or not bool(np.all(np.isfinite(amps))):
+            return  # drop empty or malformed packets: one NaN subcarrier
+                    # would poison every later mean/FFT estimate and the
+                    # heatmap/spectrogram panels (review advisories
+                    # R1-processor-window-nonfinite-poison,
+                    # R4-nan-inputs-processor-parity)
+        t_s = float(t_s)
+        if not np.isfinite(t_s):
+            return  # a non-finite timestamp cannot order the window
+        if self._times and t_s <= self._times[-1]:
+            return  # drop duplicate / out-of-order timestamps: the FFT
+                    # assumes a uniform sample grid (parity with
+                    # MotionAnalyzer.push())
         if self._rows and amps.size != self._rows[-1].size:
             # Subcarrier count changed (e.g. a publisher restart with a
             # different n): a mixed-width window cannot be vstacked and is
@@ -171,6 +182,10 @@ class VitalsProcessor:
         lo, hi = float(band[0]), float(band[1])
         hi = min(hi, self.fs / 2.0 - 0.01)
         lo = max(lo, 0.01)
+        if hi <= lo:
+            return x  # band not observable at this sample rate: return the
+                      # detrended signal instead of raising in scipy.butter
+                      # (vitals twin of MotionAnalyzer's low-fs fallback)
         if x.size < 30:
             return x
         sos = sps.butter(3, [lo, hi], btype="bandpass", fs=self.fs, output="sos")

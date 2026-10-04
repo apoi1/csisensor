@@ -112,3 +112,61 @@ def test_current_matrix_is_the_panels_single_source():
     q = VitalsProcessor(fs=FS, window_s=WINDOW_S)
     q.push(t[0], m[0])          # fewer than two rows: no window yet
     assert q.current_matrix() is None
+
+
+def test_nonfinite_amplitudes_are_dropped():
+    # R1-processor-window-nonfinite-poison / R4-nan-inputs-processor-parity:
+    # one NaN/Inf subcarrier (or timestamp) must be dropped, never stored —
+    # input parity with the hardened MotionAnalyzer.push().
+    t, m = synth_matrix()
+    p = VitalsProcessor(fs=FS, window_s=WINDOW_S)
+    for i in range(20):
+        p.push(t[i], m[i])
+    p.push(t[20], np.r_[m[20, :3], np.nan])    # NaN subcarrier
+    p.push(t[21], np.r_[m[21, :3], np.inf])    # Inf subcarrier
+    p.push(float("nan"), m[22])               # non-finite timestamp
+    p.push(t[23], [])                        # empty packet
+    assert p.fill() == 20
+    _, matrix = p.current_matrix()
+    assert bool(np.all(np.isfinite(matrix)))
+    np.testing.assert_allclose(matrix, m[:20])
+
+
+def test_nonfinite_packet_does_not_poison_estimates():
+    # The stream must stay continuous: a corrupt packet is dropped and the
+    # next estimate still returns finite waves and SNRs.
+    t, m = synth_matrix()
+    p = VitalsProcessor(fs=FS, window_s=WINDOW_S)
+    feed(p, t, m)                                   # full clean window
+    p.push(t[-1] + 1.0, np.r_[m[0, :3], np.nan])    # dropped, not stored
+    est = p.estimate()
+    assert est is not None
+    assert np.isfinite(est.heart_snr_db) and np.isfinite(est.resp_snr_db)
+    assert bool(np.all(np.isfinite(est.heart_wave)))
+    assert bool(np.all(np.isfinite(est.resp_wave)))
+
+
+def test_duplicate_and_out_of_order_timestamps_dropped():
+    # Parity with MotionAnalyzer: the FFT assumes a uniform sample grid;
+    # duplicate or regressed timestamps corrupt the spectrum.
+    t, m = synth_matrix()
+    p = VitalsProcessor(fs=FS, window_s=WINDOW_S)
+    for i in range(20):
+        p.push(t[i], m[i])
+    p.push(t[19], m[20])              # duplicate timestamp
+    p.push(t[5], m[21])               # regressed timestamp
+    assert p.fill() == 20
+
+
+def test_low_sample_rate_does_not_crash():
+    # Vitals twin of R3-low-fs-crash (fixed in MotionAnalyzer): when Nyquist
+    # cannot express the band, _bandpass must degrade to the detrended
+    # signal instead of raising in scipy.butter.
+    t, m = synth_matrix()
+    p = VitalsProcessor(fs=0.2, window_s=200.0)   # capacity 40, fs/2 < bands
+    feed(p, t, m)                                # keeps the last 40 rows
+    est = p.estimate()
+    assert est is not None
+    assert est.heart_bpm is None and est.resp_pm is None  # bands unobservable
+    assert bool(np.all(np.isfinite(est.heart_wave)))
+    assert bool(np.all(np.isfinite(est.resp_wave)))
