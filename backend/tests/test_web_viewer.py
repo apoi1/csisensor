@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from motion_analyzer import MotionAnalyzer
-from vitals_processor import VitalsProcessor
+from config import Config
+from link_manager import LinkManager
 from web_viewer import ViewerState, build_app
 
 FS = 10.0
@@ -31,14 +31,12 @@ def synth_packets(bpm=60.0, resp_pm=15.0, n_sub=32, seed=7, t0=100.0):
 
 
 def make_state(history_points=8):
-    p = VitalsProcessor(fs=FS, window_s=WINDOW_S)
-    m = MotionAnalyzer(fs=FS, window_s=WINDOW_S)
-    return ViewerState(p, m, history_points=history_points)
+    return ViewerState(LinkManager(Config()), history_points=history_points)
 
 
-def tick(state, packets, start=200.0):
-    """Feed packets then force one estimate at time `start`."""
-    state.feed(packets)
+def tick(state, packets, start=200.0, link="default"):
+    """Feed packets into one link then force one estimate at time `start`."""
+    state.ingest(link, packets)
     state.maybe_estimate(start, every_s=1.0)
 
 
@@ -69,6 +67,7 @@ def test_full_window_reports_estimates_and_presence():
     assert snap["distance_m"] is not None
     assert snap["wave"] is not None
     assert len(snap["wave"]["t"]) == len(snap["wave"]["heart"])
+    assert snap["n_links"] == 1
     # JSON-serializable end to end
     import json
     json.dumps(snap)
@@ -77,7 +76,7 @@ def test_full_window_reports_estimates_and_presence():
 def test_estimate_cadence_respects_every_s():
     state = make_state()
     pkts = synth_packets()
-    state.feed(pkts)
+    state.ingest("default", pkts)
     assert state.maybe_estimate(300.0, every_s=1.0) is True
     assert state.maybe_estimate(300.4, every_s=1.0) is False
     assert state.maybe_estimate(301.0, every_s=1.0) is True
@@ -88,14 +87,14 @@ def test_corrupt_packets_never_break_the_stream():
     # pipelines, and the next snapshot still carries finite estimates.
     state = make_state()
     good = synth_packets()
-    state.feed(good)
+    state.ingest("default", good)
     state.maybe_estimate(400.0, every_s=1.0)
     corrupt = SimpleNamespace(t_s=500.0,
                               amps=np.r_[good[0].amps[:3], np.nan],
                               rssi=-52.0)
     nan_time = SimpleNamespace(t_s=float("nan"),
                                amps=good[1].amps, rssi=-52.0)
-    state.feed([corrupt, nan_time])
+    state.ingest("default", [corrupt, nan_time])
     state.maybe_estimate(401.0, every_s=1.0)
     snap = state.latest()
     assert snap["heart_bpm"] is not None
@@ -107,7 +106,7 @@ def test_history_trims_to_max_points():
     state = make_state(history_points=5)
     pkts = synth_packets()
     for i in range(9):
-        state.feed(pkts)
+        state.ingest("default", pkts)
         state.maybe_estimate(500.0 + i, every_s=1.0)
     hist = state.latest()["history"]
     assert len(hist["t"]) == 5
@@ -120,3 +119,12 @@ def test_build_app_registers_routes():
     paths = {r.resource.canonical for r in app.router.routes()}
     assert paths == {"/", "/ws"}
     assert app.router["index"] is not None and app.router["ws"] is not None
+
+
+def test_snapshot_counts_links():
+    state = make_state()
+    tick(state, synth_packets(seed=1), start=600.0, link="a1b2c3")
+    tick(state, synth_packets(seed=2), start=601.0, link="d4e5f6")
+    snap = state.latest()
+    assert snap["n_links"] == 2
+    assert snap["ready"] is True

@@ -25,9 +25,7 @@ import numpy as np
 from aiohttp import web
 
 from config import Config
-from motion_analyzer import MotionAnalyzer
-from mqtt_subscriber import CsiSubscriber
-from vitals_processor import VitalsProcessor
+from link_manager import LinkManager
 
 logger = logging.getLogger("web_viewer")
 
@@ -42,33 +40,30 @@ def _round_list(values, digits: int = 4):
 class ViewerState:
     """Thread-safe latest snapshot + rolling history for the web page.
 
-    The paho feed thread calls feed()/maybe_estimate(); the asyncio WS
-    handlers only read latest().  A lock guards the snapshot assembly.
+    The feed thread calls drain_and_feed()/maybe_estimate() on the
+    LinkManager; the asyncio WS handlers only read latest().
     """
 
-    def __init__(self, processor: VitalsProcessor, motion: MotionAnalyzer,
+    def __init__(self, links: LinkManager,
                  history_points: int = HISTORY_POINTS):
-        self._processor = processor
-        self._motion = motion
+        self._links = links
         self._lock = threading.Lock()
         self._history: deque = deque(maxlen=max(2, history_points))
         self._latest = self._empty_snapshot()
         self._last_estimate = 0.0
 
     # ---------------------------------------------------------------- input
-    def feed(self, packets) -> None:
-        """Push parsed CSI packets into both DSP pipelines."""
-        for pkt in packets:
-            self._processor.push(pkt.t_s, pkt.amps)
-            self._motion.push(pkt.t_s, pkt.amps, pkt.rssi)
+    def ingest(self, link_id: str, packets) -> int:
+        """Passthrough: push packets into one link's pipelines."""
+        return self._links.ingest(link_id, packets)
 
     def maybe_estimate(self, now: float, every_s: float = 1.0) -> bool:
         """Assemble a fresh snapshot at most once per `every_s` seconds."""
         if now - self._last_estimate < every_s:
             return False
         self._last_estimate = now
-        est = self._processor.estimate()
-        mot = self._motion.estimate()
+        est = self._links.estimate()
+        mot = self._links.motion_estimate()
         self._latest = self._snapshot(now, est, mot)
         return True
 
@@ -80,7 +75,7 @@ class ViewerState:
             "heart_snr_db": 0.0, "resp_snr_db": 0.0,
             "presence": "Filling", "motion_rms": 0.0,
             "rssi_dbm": None, "distance_m": None,
-            "n_samples": 0, "n_subcarriers": 0,
+            "n_samples": 0, "n_subcarriers": 0, "n_links": 0,
             "wave": None,
             "history": {"t": [], "heart": [], "resp": []},
         }
@@ -99,8 +94,9 @@ class ViewerState:
 
         snap = self._empty_snapshot()
         snap["ts"] = round(now, 3)
-        snap["fill"] = round(self._processor.fill() / self._processor.capacity, 3)
-        snap["ready"] = self._processor.ready()
+        snap["fill"] = round(self._links.fill() / max(1, self._links.capacity()), 3)
+        snap["ready"] = (self._links.capacity() > 0
+                          and self._links.fill() >= self._links.capacity())
         snap["history"] = {"t": hist_t, "heart": hist_h, "resp": hist_r}
 
         if est is not None:
@@ -116,6 +112,7 @@ class ViewerState:
                 "heart": _round_list(est.heart_wave[idx:]),
                 "resp": _round_list(est.resp_wave[idx:]),
             }
+        snap["n_links"] = self._links.n_links()
 
         if mot is not None:
             snap["presence"] = mot.state.value
@@ -165,11 +162,11 @@ def build_app(state: ViewerState) -> web.Application:
 
 
 # ----------------------------------------------------------------- feed loop
-def _feed_loop(state: ViewerState, subscriber: CsiSubscriber,
+def _feed_loop(state: ViewerState, links: LinkManager,
                every_s: float, stop: threading.Event) -> None:
-    """Drain the MQTT queue into the DSP and assemble ~1 Hz snapshots."""
+    """Drain the MQTT queue into the link pipelines; assemble ~1 Hz snapshots."""
     while not stop.is_set():
-        state.feed(subscriber.drain(256))
+        links.drain_and_feed(256)
         state.maybe_estimate(time.time(), every_s)
         stop.wait(0.1)
 
@@ -185,7 +182,7 @@ def main() -> int:
     parser.add_argument("--mqtt-port", type=int, default=None,
                         help="MQTT broker port (default: 1883)")
     parser.add_argument("--topic", default=None,
-                        help="CSI topic (default: esp32/csi/raw)")
+                        help="CSI topic or MQTT pattern (default: esp32/+/csi/raw + esp32/csi/raw for multi-ESP32)")
     parser.add_argument("--fs", type=float, default=None,
                         help="expected CSI sample rate in Hz (default: 10)")
     parser.add_argument("--window", type=float, default=None,
@@ -206,37 +203,28 @@ def main() -> int:
         cfg = replace(cfg, sample_rate_hz=args.fs)
     if args.window is not None:
         cfg = replace(cfg, window_seconds=args.window)
+    if args.topic is not None:
+        cfg = replace(cfg, topic_patterns=(args.topic,))
 
-    processor = VitalsProcessor(fs=cfg.sample_rate_hz,
-                                window_s=cfg.window_seconds,
-                                heart_band_hz=cfg.heart_band_hz,
-                                resp_band_hz=cfg.resp_band_hz,
-                                min_snr_db=cfg.min_snr_db)
-    motion = MotionAnalyzer(fs=cfg.sample_rate_hz,
-                            window_s=cfg.window_seconds,
-                            absent_std_threshold=cfg.absent_std_threshold,
-                            moving_rms_threshold=cfg.moving_rms_threshold,
-                            rssi_ref_dbm=cfg.rssi_ref_dbm,
-                            ref_distance_m=cfg.ref_distance_m,
-                            path_loss_exponent=cfg.path_loss_exponent)
-    state = ViewerState(processor, motion)
-    subscriber = CsiSubscriber(cfg.mqtt_host, cfg.mqtt_port, cfg.topic_raw)
-    subscriber.start()
+    links = LinkManager(cfg)
+    state = ViewerState(links)
+    links.sub.start()
 
     stop = threading.Event()
     feed = threading.Thread(target=_feed_loop,
-                            args=(state, subscriber, cfg.estimate_every_s, stop),
+                            args=(state, links, cfg.estimate_every_s, stop),
                             daemon=True, name="web-viewer-feed")
     feed.start()
 
     app = build_app(state)
-    logger.info("web viewer listening on http://%s:%d (broker %s:%d, topic %s)",
-                args.host, args.port, cfg.mqtt_host, cfg.mqtt_port, cfg.topic_raw)
+    logger.info("web viewer listening on http://%s:%d (broker %s:%d, topics %s)",
+                args.host, args.port, cfg.mqtt_host, cfg.mqtt_port,
+                ", ".join(cfg.topic_patterns))
     try:
         web.run_app(app, host=args.host, port=args.port, print=None)
     finally:
         stop.set()
-        subscriber.stop()
+        links.sub.stop()
     return 0
 
 

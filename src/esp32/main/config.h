@@ -13,7 +13,10 @@
  * Use the Windows host IP that runs Docker Desktop + Mosquitto,
  * e.g. the IPv4 shown by `ipconfig` on the Wi-Fi adapter.               */
 #define MQTT_BROKER_URI  "mqtt://192.168.1.50:1883"
-#define MQTT_TOPIC_CSI   "esp32/csi/raw"
+/* Per-device CSI topic prefix: the publisher appends
+ * "/<last-3-MAC-bytes>/csi/raw", so multiple ESP32s on one broker never
+ * collide (the backend routes each device to its own pipeline). */
+#define MQTT_TOPIC_PREFIX   "esp32"
 
 /* -------------------------------- CSI -------------------------------- */
 #define CSI_INTERVAL_MS      100       /* packet/ping interval ≈ sample rate (10 Hz) */

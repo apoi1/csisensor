@@ -140,7 +140,8 @@ Waves: latest bandpass-filtered subcarrier signals.</p>
     $("dist").textContent = s.distance_m === null ? "\u2013" : fmt(s.distance_m, 2);
     $("fill").textContent = "window " + Math.round(s.fill * 100) + "%" +
         "  \u00b7  SNR " + fmt(s.heart_snr_db, 1) + "/" + fmt(s.resp_snr_db, 1) + " dB" +
-        "  \u00b7  RSSI " + (s.rssi_dbm === null ? "\u2013" : s.rssi_dbm + " dBm");
+        "  \u00b7  RSSI " + (s.rssi_dbm === null ? "\u2013" : s.rssi_dbm + " dBm") +
+        (s.n_links > 1 ? "  \u00b7  links " + s.n_links : "");
     drawTrend(); drawWave();
   }
 

@@ -5,11 +5,12 @@ This document describes the signal model of the project: an ESP32-S3 captures Wi
 ## 1. Overview and honest scope
 
 ```
-ESP32-S3 (CSI capture, firmware) → Mosquitto MQTT broker (Docker) → Python backend (vitals + motion) → PyQt5 GUI
+ESP32-S3 nodes (CSI capture) ──MQTT──► Mosquitto (Docker) ◄── Python backend (paho-mqtt + scipy FFT) ──► PyQt5 GUI (vitals + body presence/motion)
+      (one or more, per-device topics)                                          └──► Web viewer (backend/web_viewer.py → any phone browser on the LAN)
 ```
 
 - **Amplitude-only CSI** — the firmware discards subcarrier phase and publishes only `a_k = |H_k|`.
-- **Single antenna, one TX-RX link** — no antenna array, no multi-link diversity.
+- **Single antenna per link** — no antenna array, no per-link AoA. **Multiple links (multi-ESP32) ARE supported** since 2026-10: each device publishes to its own topic and the backend fuses per band (see §11).
 - **Estimated today** — presence (absent / still / moving) and a coarse RSSI link-distance.
 - **Not estimated** — geometric coordinates (x/y), posture, body orientation, angle of arrival.
 
@@ -205,7 +206,57 @@ Defaults: `R0 = -52 dBm` at `d0 = 1 m`, `n_pl = 3.0`. This ranges the TX–RX li
 - Classification pipeline absent / still / moving (window std + motion-band RMS), plus the RSSI link distance labeled **"link dist"** in the GUI.
 - What it does **not** estimate: x/y coordinates, posture, angle.
 
-## 8. GUI function inventory
+## 8. Multi-device links (multi-ESP32) — implemented design
+
+**Why multiple links help.** A single TX–RX link is hostage to geometry: the
+Fresnel-zone model (§3) predicts deep amplitude nulls where the body sits at
+zone boundaries, and any link loses the vital-sign modulation when the
+subject turns. `N` links around the room give spatial diversity: the subject
+cannot sit in the null of every link at once. This is the standard link-
+diversity argument in the WiFi-sensing literature.
+
+**Where the data comes from per link.** Each ESP32 publishes to its own
+per-device topic
+
+```
+esp32/<id>/csi/raw        <id> = last 3 bytes of the STA MAC (eFuse-derived, stable)
+```
+
+so links never collide on the broker. The backend subscribes the wildcard
+`esp32/+/csi/raw` **plus** the legacy flat topic `esp32/csi/raw` (old firmware
+keeps working un-reflashed). Every packet is tagged with its link id taken
+from the MQTT topic; each link owns an isolated `VitalsProcessor` +
+`MotionAnalyzer`, so the hardened input guards (non-finite drop, monotonic
+timestamps, width reset) apply **per link** — two devices with overlapping
+clock domains never corrupt each other's windows (the reason a shared window
+is not an option).
+
+**Fusion (per band, max SNR).** For each physiological band independently,
+the link whose in-band SNR (`SNR_k`, §4) is highest wins the estimate:
+
+```math
+\hat{f}_{heart} = \hat{f}\left( \arg\max_{\ell \in L} \mathrm{SNR}_{heart}(\ell) \right), \qquad
+\hat{f}_{resp} = \hat{f}\left( \arg\max_{\ell \in L} \mathrm{SNR}_{resp}(\ell) \right)
+```
+
+Heart and respiration may therefore come from different links — each band
+follows the link that observes it best. The heart-winning link becomes the
+*primary* link: the GUI physics panels and the RSSI/distance readout follow
+it. If the best link still sits below the 6 dB gate, the fused rate is
+`None` — an honest "no link passed the gate", never a mixed estimate.
+
+**Presence aggregate (conservative).** Any link reports `Moving` → `Moving`;
+else any link `Still` → `Still`; else `Absent`. A person visible to any link
+counts as present; the aggregated motion RMS is the maximum across links.
+
+**Practical notes.** Flash each node once with the per-device firmware; the
+id is derived from its MAC, so no per-node configuration is needed. Dry-run
+without hardware: run two simulators with `--device-id a1b2c3` and
+`--device-id d4e5f6` (DEPLOYMENT.md §10). The backend GUI status bar and the
+web page's meta line show the active link count; `--topic` still pins a
+single explicit topic/pattern when needed.
+
+## 9. GUI function inventory
 
 | Panel | Quantity | Formula shown (mathtext) |
 | --- | --- | --- |
@@ -217,15 +268,17 @@ Defaults: `R0 = -52 dBm` at `d0 = 1 m`, `n_pl = 3.0`. This ranges the TX–RX li
 | Spectrogram | `scipy.signal.spectrogram` of `a_bar(t)` with shaded bands | `$X(\tau,f)=\sum_n x[n]\,w[n-\tau]\,e^{-j2\pi fn/N}$` |
 | Motion-energy trace | 10-min `M_rms` history with threshold line | `$M_\mathrm{rms}=\sqrt{\langle b^2(t)\rangle}$`, band 0.5–3.0 Hz |
 
-## 9. Libraries, frameworks, technologies
+## 10. Libraries, frameworks, technologies
 
 - **Firmware**: ESP-IDF v5.x C++ (esp_wifi CSI API, esp_timer, esp_event, esp_netif, nvs_flash, esp-mqtt), FreeRTOS queues/tasks, lwIP ping.
 - **Transport**: Mosquitto MQTT broker (Docker + docker-compose), paho-mqtt (Python).
 - **Processing**: Python 3, numpy (`ndarray`, `rfft`, `hanning`, `log10`, `std`), scipy.signal (`detrend`, `butter`/`sosfiltfilt`, `spectrogram`), dataclasses, `collections.deque` sliding windows.
+- **Web viewer**: aiohttp (HTTP + WebSocket server, Apache 2.0), paho-mqtt consumer.
+- **Multi-link**: `backend/link_manager.py` (wildcard subscription, per-link pipelines, per-band max-SNR fusion).
 - **GUI**: PyQt5 (`QMainWindow`, `QTimer`, labels/status bar), matplotlib Qt5Agg (`Figure`/`FigureCanvasQTAgg`, gridspec, `imshow`, mathtext formula titles).
 - **Config/testing**: frozen dataclass `Config` with `os.getenv` overrides; pytest unit tests; numpy-based synthetic simulator (scenarios resting/moving/absent) via paho-mqtt.
 
-## 10. References (verified)
+## 11. References (verified)
 
 1. Espressif ESP-CSI — CSI applications (indoor positioning, human detection): <https://github.com/espressif/esp-csi>
 2. ESP32-CSI-Tool — CSI collection tool (active/passive): <https://github.com/StevenMHernandez/ESP32-CSI-Tool>

@@ -233,6 +233,24 @@ not a medical device.
 3. After ~15 s the window fills and estimates appear.
 4. Motion artifacts: a single movement resets the vitals estimates for a few seconds, and the **Body row** switches to `Moving` while you move.
 
+### Multi-node (multi-ESP32) setup
+
+Each node publishes to its own per-device topic (`esp32/<id>/csi/raw`, id =
+last 3 bytes of its MAC), so flash as many ESP32s as you like — no per-node
+configuration. The backend subscribes `esp32/+/csi/raw` plus the legacy
+flat topic and fuses the links per band (best SNR wins; see
+`docs/SIGNAL-MODELING.md` §8).
+
+Dry-run two links without hardware — two terminals (same venv):
+
+```powershell
+python ..\scripts\simulate_esp32.py --host localhost --device-id a1b2c3 --scenario resting
+python ..\scripts\simulate_esp32.py --host localhost --device-id d4e5f6 --scenario resting
+```
+
+The GUI status bar then shows `links a1b2c3, d4e5f6` and the estimates fuse
+automatically; the web page's meta line shows `links 2`.
+
 ## 11. Troubleshooting
 
 | Symptom | Cause / fix |

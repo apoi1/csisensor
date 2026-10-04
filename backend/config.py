@@ -44,6 +44,9 @@ class Config:
     mqtt_host: str = os.environ.get("MQTT_HOST", "localhost")
     mqtt_port: int = _env_int("MQTT_PORT", 1883)
     topic_raw: str = os.environ.get("MQTT_TOPIC", "esp32/csi/raw")
+    # Subscription patterns for multi-ESP32 links: per-device wildcard plus
+    # the legacy flat topic (old firmware keeps working un-reflashed).
+    topic_patterns: tuple = ("esp32/+/csi/raw", "esp32/csi/raw")
 
     # Sampling / processing
     sample_rate_hz: float = _env_float("CSI_FS", 10.0)

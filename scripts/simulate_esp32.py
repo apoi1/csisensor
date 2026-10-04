@@ -60,6 +60,9 @@ def main() -> None:
     ap.add_argument("--host", default="localhost")
     ap.add_argument("--port", type=int, default=1883)
     ap.add_argument("--topic", default="esp32/csi/raw")
+    ap.add_argument("--device-id", default=None,
+                    help="publish as a per-device link (esp32/<id>/csi/raw) "
+                         "to dry-run multi-ESP32 setups")
     ap.add_argument("--subcarriers", type=int, default=64)
     ap.add_argument("--rate", type=float, default=10.0, help="packets per second")
     ap.add_argument("--heart-hz", type=float, default=1.1, help="~66 BPM")
@@ -88,6 +91,9 @@ def main() -> None:
     client = mqtt.Client(client_id="csi-simulator")
     client.connect(args.host, args.port, keepalive=60)
     client.loop_start()
+    if args.device_id and args.topic == "esp32/csi/raw":
+        args.topic = f"esp32/{args.device_id}/csi/raw"
+
     print(f"publishing synthetic CSI to {args.host}:{args.port}/{args.topic} "
           f"({args.rate} Hz, {args.subcarriers} subcarriers, "
           f"scenario={args.scenario}) - Ctrl+C to stop")

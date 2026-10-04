@@ -16,7 +16,6 @@ from PyQt5.QtWidgets import (QApplication, QHBoxLayout, QLabel, QMainWindow,
                              QVBoxLayout, QWidget)
 from scipy import signal as sps
 
-from vitals_processor import VitalsEstimate, VitalsProcessor
 from motion_analyzer import MOTION_BAND_HZ
 
 # Motion-energy history length in the bottom-right panel (seconds).
@@ -26,12 +25,10 @@ _MOTION_HISTORY_S = 600.0
 class VitalsWindow(QMainWindow):
     """Left column: CSI/vital traces; right column: physics panels."""
 
-    def __init__(self, cfg, subscriber, processor, motion):
+    def __init__(self, cfg, links):
         super().__init__()
         self.cfg = cfg
-        self.sub = subscriber
-        self.proc = processor
-        self.motion = motion
+        self.links = links
         self._last_estimate = 0.0
         self._pkt_window_start = time.monotonic()
         self._pkt_window_count = 0
@@ -124,34 +121,32 @@ class VitalsWindow(QMainWindow):
 
     # ------------------------------------------------------------------ slots
     def _on_tick(self):
-        packets = self.sub.drain()
+        fed = self.links.drain_and_feed()
         now = time.monotonic()
-        self._pkt_window_count += len(packets)
+        self._pkt_window_count += fed
         if now - self._pkt_window_start >= 2.0:
             self._pkt_rate = self._pkt_window_count / (now - self._pkt_window_start)
             self._pkt_window_start = now
             self._pkt_window_count = 0
 
-        for p in packets:
-            t_s = p.t_us / 1e6
-            self.proc.push(t_s, p.amps)          # single window ingest: the
-            self.motion.push(t_s, p.amps, p.rssi)  # physics panels read proc
-
         self._redraw_raw()
 
         if now - self._last_estimate >= self.cfg.estimate_every_s:
             self._last_estimate = now
-            self._apply_estimate(self.proc.estimate())
-            self._apply_motion(self.motion.estimate(), now)
+            self._apply_estimate(self.links.estimate())
+            self._apply_motion(self.links.motion_estimate(), now)
 
-        self.statusBar().showMessage(
-            "MQTT {} | {:.1f} pkt/s | window {}/{}".format(
-                "connected" if self.sub.is_connected() else "disconnected",
-                self._pkt_rate, self.proc.fill(), self.proc.capacity)
-        )
+        status = "MQTT {} | {:.1f} pkt/s | window {}/{}".format(
+            "connected" if self.links.sub.is_connected() else "disconnected",
+            self._pkt_rate, self.links.fill(), self.links.capacity())
+        if self.links.n_links() > 1:
+            status += " | links {} (best {})".format(
+                ", ".join(self.links.link_ids()),
+                self.links.link_ids()[0] if self.links.fill() else "-")
+        self.statusBar().showMessage(status)
 
     def _redraw_raw(self):
-        window = self.proc.current_window()
+        window = self.links.current_window()
         if window is None:
             return
         t, mean = window
@@ -163,7 +158,7 @@ class VitalsWindow(QMainWindow):
     def _apply_estimate(self, est):
         if est is None:
             self.lbl_meta.setText("filling window... {}%".format(
-                int(100 * self.proc.fill() / self.proc.capacity)))
+                int(100 * self.links.fill() / max(1, self.links.capacity()))))
             return
 
         t = est.wave_times_s
@@ -224,7 +219,7 @@ class VitalsWindow(QMainWindow):
 
     def _redraw_heatmap(self):
         """Subcarrier heatmap: 20*log10(|H_k| + eps) over the current window."""
-        window = self.proc.current_matrix()
+        window = self.links.current_matrix()
         if window is None:
             return
         t_rel, matrix = window                   # (time, subcarrier)
@@ -243,7 +238,7 @@ class VitalsWindow(QMainWindow):
 
     def _redraw_spectrogram(self):
         """Spectrogram of the window's mean amplitude with physiological bands."""
-        window = self.proc.current_matrix()
+        window = self.links.current_matrix()
         if window is None:
             return
         _, matrix = window
@@ -280,6 +275,6 @@ class VitalsWindow(QMainWindow):
 
     def closeEvent(self, event):
         try:
-            self.sub.stop()
+            self.links.sub.stop()
         finally:
             event.accept()

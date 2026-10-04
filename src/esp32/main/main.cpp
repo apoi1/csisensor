@@ -8,7 +8,7 @@
  * A lwIP ping session (default 10 Hz, USE_TRAFFIC_PING) keeps packets
  * flowing to the STA so CSI callbacks fire at a steady sample rate.
  *
- * MQTT payload (topic esp32/csi/raw), ASCII CSV:
+ * MQTT payload (topic esp32/<device-id>/csi/raw), ASCII CSV:
  *   t_us,rssi,n,seq,a0,a1,...,a<n-1>
  * where a* are per-subcarrier amplitudes = round(sqrt(I^2 + Q^2)).
  *
@@ -32,6 +32,7 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
+#include "esp_mac.h"
 #include "nvs_flash.h"
 #include "mqtt_client.h"
 
@@ -111,6 +112,16 @@ static void publisher_task(void *arg)
         return;
     }
 
+    /* Per-device topic: esp32/<last-3-MAC-bytes>/csi/raw (eFuse-derived
+     * id, stable across reboots) so several ESP32s never collide on the
+     * broker; the backend routes each device to its own DSP pipeline. */
+    char topic_csi[48];
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    snprintf(topic_csi, sizeof(topic_csi), "%s/%02x%02x%02x/csi/raw",
+             MQTT_TOPIC_PREFIX, mac[3], mac[4], mac[5]);
+    ESP_LOGI(TAG, "publishing CSI to topic %s", topic_csi);
+
     csi_sample_t s;
     while (true) {
         if (xQueueReceive(s_sample_queue, &s, portMAX_DELAY) != pdTRUE) {
@@ -125,7 +136,7 @@ static void publisher_task(void *arg)
                              (unsigned)s.amp[i]);
         }
 
-        if (off > 0 && esp_mqtt_client_publish(s_mqtt, MQTT_TOPIC_CSI, buf,
+        if (off > 0 && esp_mqtt_client_publish(s_mqtt, topic_csi, buf,
                                                off, 0, 0) >= 0) {
             s_published++;
         } else {

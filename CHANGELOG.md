@@ -6,6 +6,13 @@ No tagged releases yet; recent history lives under Unreleased.
 
 ## [Unreleased]
 
+### Added (2026-10-04, later)
+- **Multi-ESP32 links**: firmware publishes per-device topics
+  (`esp32/<id>/csi/raw`, id = last 3 MAC bytes); backend gains
+  `link_manager.py` (wildcard subscription + per-link DSP pipelines),
+  per-band max-SNR fusion, conservative presence aggregate, `--device-id`
+  simulator flag for multi-node dry-runs. Legacy flat topic still works.
+
 ### Added (2026-10-04)
 - LAN **web viewer** for phones/tablets: `backend/web_viewer.py` serves a
   self-contained page (`backend/web_static/`) and broadcasts ~1 Hz
