@@ -119,19 +119,17 @@ class LinkManager:
         pair = self._links.get(link_id)
         if pair is None:
             if len(self._links) >= MAX_LINKS:
+                # Always admit the new device: evict the least-recently-seen
+                # link (LRU). A legitimate newcomer must never be silently
+                # locked out (R4-1); the broker is a trusted LAN service
+                # (auth before any exposure - DEPLOYMENT §12).
                 stalest = min(self._links, key=lambda lid: self._last_seen.get(lid, 0.0))
-                if time.time() - self._last_seen.get(stalest, 0.0) > LINK_STALE_S:
-                    logger.warning("link registry full (%d); evicting stale"
-                                   " link %r for %r", MAX_LINKS, stalest, link_id)
-                    self._links.pop(stalest, None)
-                    self._last_seen.pop(stalest, None)
-                    self._evictions += 1
-                else:
-                    # All live: an active real fleet must not be starved by a
-                    # flood of other live publishers - reject the newcomer.
-                    logger.warning("link registry full of LIVE links; dropping"
-                                   " packets from unknown link %r", link_id)
-                    return None
+                logger.warning("link registry full (%d); evicting least-"
+                               "recently-seen link %r for %r",
+                               MAX_LINKS, stalest, link_id)
+                self._links.pop(stalest, None)
+                self._last_seen.pop(stalest, None)
+                self._evictions += 1
             pair = (
                 VitalsProcessor(fs=self.cfg.sample_rate_hz,
                                 window_s=self.cfg.window_seconds,
@@ -162,12 +160,14 @@ class LinkManager:
 
     def fill(self) -> int:
         """Filled samples of the primary link's vitals window."""
-        proc = self._primary_proc()
-        return proc.fill() if proc is not None else 0
+        with self._lock:
+            proc = self._primary_proc()
+            return proc.fill() if proc is not None else 0
 
     def capacity(self) -> int:
-        proc = self._primary_proc()
-        return proc.capacity if proc is not None else 0
+        with self._lock:
+            proc = self._primary_proc()
+            return proc.capacity if proc is not None else 0
 
     def evictions(self) -> int:
         """How many stale links were evicted from the full registry."""
@@ -200,6 +200,19 @@ class LinkManager:
         return count
 
     # ---------------------------------------------------------------- fusion
+    def _prune_stale(self) -> None:
+        """Drop links that went silent: they must not linger in memory
+        when no new registrations arrive to evict them (review finding
+        R4-3). Caller must hold self._lock; runs before every fusion pass.
+        """
+        now = time.time()
+        for lid in [l for l, seen in self._last_seen.items()
+                   if now - seen > LINK_STALE_S]:
+            self._links.pop(lid, None)
+            self._last_seen.pop(lid, None)
+            if self._primary == lid:
+                self._primary = None
+
     def _live_links(self):
         """Links with fresh data (staleness gate; review finding R4-2)."""
         now = time.time()
@@ -209,6 +222,7 @@ class LinkManager:
     def estimate(self) -> VitalsEstimate | None:
         """Fused vitals: per-band max-SNR winner across ready, live links."""
         with self._lock:
+            self._prune_stale()
             live = self._live_links()
             candidates = []
             for link_id in live:
@@ -247,6 +261,7 @@ class LinkManager:
         """
         ready = []
         with self._lock:
+            self._prune_stale()
             for link_id in self._live_links():
                 est = self._links[link_id][1].estimate()
                 if est is not None:

@@ -114,21 +114,33 @@ def test_partial_window_fused_estimate_is_none():
     assert links.fill() == 20
 
 
-def test_link_registry_caps_malformed_topics():
-    # R3-5/R4-1: unknown topic layouts must not grow the link registry (and
-    # memory) without bound; a full registry evicts its stalest link (LRU)
-    # so junk floods cannot starve real devices.
+def test_link_registry_admits_newcomers_always():
+    # R4-1 (v3): a full registry ALWAYS admits a new legitimate device by
+    # evicting the least-recently-seen link (LRU). Trusted-broker tradeoff:
+    # a flood of live junk links can churn the registry - document broker
+    # auth before any exposure (DEPLOYMENT security notes).
     links = make_manager()
     pkts = synth_packets()[:5]
-    links.ingest("real-link", pkts)
-    links._last_seen["real-link"] = time.time()  # freshest: never evicted
-    for i in range(30):
-        links.ingest(f"junk/topic/{i}", pkts)      # unknown layout -> full topic id
+    links.ingest("first-link", pkts)               # oldest -> evicted first
+    for i in range(MAX_LINKS):
+        links.ingest(f"junk-{i:02d}", pkts)        # fills + churns the registry
     assert links.n_links() == MAX_LINKS
-    assert "real-link" in links.link_ids()          # live fleet never starved
-    assert links.evictions() == 0                    # everything is live
-    assert links.ingest("junk/topic/999", pkts) == 0  # newcomer rejected
-    assert links.n_links() == MAX_LINKS
+    assert "junk-%02d" % (MAX_LINKS - 1) in links.link_ids()
+    assert "first-link" not in links.link_ids()    # LRU evicted the oldest
+    assert links.evictions() >= 1
+
+
+def test_stale_links_are_pruned_from_memory():
+    # R4-3 (v3): silent links must not linger in the registry when no new
+    # registrations arrive; every fusion pass prunes them.
+    links = make_manager()
+    pkts = synth_packets()[:5]
+    links.ingest("gone-link", pkts)
+    links.ingest("live-link", pkts)
+    links._last_seen["gone-link"] -= (LINK_STALE_S + 5.0)
+    links.estimate()                                # fusion pass prunes
+    assert links.n_links() == 1
+    assert links.link_ids() == ["live-link"]
 
 
 def test_subscriber_holds_every_pattern():
@@ -140,7 +152,6 @@ def test_subscriber_holds_every_pattern():
 
 def test_link_registry_evicts_stalest_not_new_devices():
     # R4-1: a full registry must never permanently lock out new devices.
-    # It evicts the stalest link (LRU) instead of dropping the newcomer.
     links = make_manager()
     pkts = synth_packets()[:5]
     links.ingest("old-link", pkts)
