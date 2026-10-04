@@ -432,7 +432,7 @@ t_us,rssi,n,seq,a0,a1,...,aN
 ### 5.3 Datasets
 
 - **No se usa ningún dataset externo.** La validación es de dos niveles:
-  1. **Unit tests** (`backend/tests/`): señales CSI sintéticas con verdad conocida (60 bpm / 15 resp·min⁻¹) → 6/6 pasando; el estimador debe recuperar la frecuencia inyectada ±5 bpm y ±3 /min, y una señal plana debe dar `"-"`.
+  1. **Unit tests** (`backend/tests/`): señales CSI sintéticas con verdad conocida (60 bpm / 15 resp·min⁻¹) → 32/32 pasando; el estimador debe recuperar la frecuencia inyectada ±5 bpm y ±3 /min, y una señal plana debe dar `"-"`. La suite cubre: estimador de signos vitales, parser de paquetes, analizador de presencia/movimiento, config por env (incluido el sentinel `none`), endurecimiento de entradas del procesador, y el pipeline del web viewer.
   2. **Simulador en vivo** (`scripts/simulate_esp32.py`) → GUI.
 - Para validación futura contra datos de terceros, los datasets públicos conocidos de WiFi sensing son: **UT-HAR** (reconocimiento de actividad, Yousefi et al. 2017), **NTU-Fi** (HAR y lenguaje de señas), **SignFi**, **Wiar** y **FallAF**. Ninguno está orientado a signos vitales (los papers de esa área usan capturas propias de laboratorio), así que la estrategia de este proyecto es generar los datos con el propio ESP32 y el simulador.
 - Lecturas académicas del área: §3.7.
@@ -441,7 +441,7 @@ t_us,rssi,n,seq,a0,a1,...,aN
 
 ## 6. Referencias rápidas
 
-- **Guía de instalación y despliegue completa (11 secciones + troubleshooting):** `DEPLOYMENT.md`
+- **Guía de instalación y despliegue completa (12 secciones + troubleshooting):** `DEPLOYMENT.md`
 - **Resumen de arquitectura:** `docs/PROJECT-ARCHITECTURE.md`
 - API de WiFi/CSI del IDF: sección *WiFi CSI* de `esp_wifi.h` (docs ESP-IDF v5.3.x, ESP32-S3)
 - Filtros y espectro: documentación de `scipy.signal` (butter, sosfiltfilt, detrend)
@@ -449,4 +449,4 @@ t_us,rssi,n,seq,a0,a1,...,aN
 
 ---
 
-*Mantener este archivo sincronizado con el stack real. Última revisión: alineado con el firmware ESP-IDF v5.3.x y el backend verificado (6/6 tests).*
+*Mantener este archivo sincronizado con el stack real. Última revisión: alineado con el firmware ESP-IDF v5.3.x y el backend verificado (32/32 tests, incluye web viewer).*
