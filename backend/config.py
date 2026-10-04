@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 def _env_int(name: str, default: int) -> int:
@@ -15,6 +15,25 @@ def _env_int(name: str, default: int) -> int:
 def _env_float(name: str, default: float) -> float:
     try:
         return float(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+def _env_float_opt(name: str, default: float) -> float | None:
+    """Like _env_float, but an empty value or "none" disables the knob.
+
+    This is the reachable path to MotionAnalyzer's ranging-disabled state
+    (None): CSI_RSSI_REF_DBM="" or CSI_REF_DISTANCE_M=none turn the distance
+    estimate off until real calibration values are provided (review
+    follow-up R3-ranging-defaults-unreachable).
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    if raw.strip() == "" or raw.strip().lower() == "none":
+        return None
+    try:
+        return float(raw)
     except ValueError:
         return default
 
@@ -35,11 +54,15 @@ class Config:
     resp_band_hz: tuple = (0.1, 0.5)
     min_snr_db: float = _env_float("CSI_MIN_SNR_DB", 6.0)
 
-    # Presence / motion analysis (MotionAnalyzer)
+    # Presence / motion analysis (MotionAnalyzer).  Ranging knobs parse at
+    # instantiation (default_factory) so tests and tools can set the env
+    # before building a Config; empty/"none" disables RSSI ranging.
     absent_std_threshold: float = _env_float("CSI_ABSENT_STD", 0.15)
     moving_rms_threshold: float = _env_float("CSI_MOVING_RMS", 1.5)
-    rssi_ref_dbm: float = _env_float("CSI_RSSI_REF_DBM", -52.0)
-    ref_distance_m: float = _env_float("CSI_REF_DISTANCE_M", 1.0)
+    rssi_ref_dbm: float | None = field(
+        default_factory=lambda: _env_float_opt("CSI_RSSI_REF_DBM", -52.0))
+    ref_distance_m: float | None = field(
+        default_factory=lambda: _env_float_opt("CSI_REF_DISTANCE_M", 1.0))
     path_loss_exponent: float = _env_float("CSI_PATH_LOSS_N", 3.0)
 
     # GUI cadence

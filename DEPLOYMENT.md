@@ -181,6 +181,10 @@ via environment variables (formulas and calibration procedures in
 | `CSI_REF_DISTANCE_M` | `1.0` | reference distance `d0` |
 | `CSI_PATH_LOSS_N` | `3.0` | log-distance path-loss exponent `n` |
 
+Until it is calibrated you can turn the distance estimate off entirely: set
+`CSI_RSSI_REF_DBM` (or `CSI_REF_DISTANCE_M`) to an empty value or `none` — the
+GUI then shows `—` for the link distance instead of an uncalibrated guess.
+
 RSSI ranging calibration: measure `R0` at a known distance `d0` (e.g. 1 m)
 and set both; see `docs/SIGNAL-MODELING.md` for a two-point fit of `n`.
 
