@@ -24,7 +24,8 @@ from scipy import signal as sps
 
 # Gross body movement (walking, large gestures) lives at 0.5-3.0 Hz;
 # slower content is breathing (0.1-0.5 Hz) and heart beats (0.8-2.0 Hz).
-_MOTION_BAND_HZ = (0.5, 3.0)
+# Public: the GUI sources this same definition for the motion-panel title.
+MOTION_BAND_HZ = (0.5, 3.0)
 
 
 class PresenceState(str, Enum):
@@ -69,14 +70,20 @@ class MotionAnalyzer:
     # ------------------------------------------------------------------ input
     def push(self, t_s: float, amplitudes, rssi_dbm: float | None = None) -> None:
         amps = np.asarray(amplitudes, dtype=float).ravel()
-        if amps.size == 0:
-            return
+        if amps.size == 0 or not bool(np.all(np.isfinite(amps))):
+            return  # drop empty or malformed packets: one NaN would poison
+                    # the whole window (mean/std/RMS all become NaN)
         t_s = float(t_s)
+        if not np.isfinite(t_s):
+            return  # a non-finite timestamp cannot order the window
         if self._times and t_s <= self._times[-1]:
             return  # drop duplicate / out-of-order packet timestamps
+        rssi = None if rssi_dbm is None else float(rssi_dbm)
+        if rssi is not None and not np.isfinite(rssi):
+            rssi = None  # non-finite reading: keep the amplitude, drop the RSSI
         self._times.append(t_s)
         self._mean_amps.append(float(amps.mean()))
-        self._rssi.append(None if rssi_dbm is None else float(rssi_dbm))
+        self._rssi.append(rssi)
 
     def fill(self) -> float:
         """Fraction of the sliding window currently filled (0.0 .. 1.0)."""
@@ -113,16 +120,25 @@ class MotionAnalyzer:
     def _motion_rms(self, x_d: np.ndarray, fallback_std: float) -> float:
         """RMS of the detrended mean-amplitude series inside the motion band.
 
-        Gross body movement lives at 0.5-3.0 Hz; slower content is breathing.
-        With too few samples the bandpass is skipped and the detrended std
-        (its RMS for a zero-mean series) is used as the fallback.
+        Gross body movement lives at MOTION_BAND_HZ; slower content is
+        breathing.  With 14-29 samples a 2nd-order bandpass still separates
+        the band; below that the detrended std (its RMS for a zero-mean
+        series) is the fallback.  When Nyquist cannot express the band
+        (sample rate near or below twice its lower edge) the same fallback
+        applies.  The fallback carries full-band energy, so the MOVING
+        threshold then also sees breathing content: a documented limitation,
+        never a crash.
         """
-        if x_d.size < 30:
-            return fallback_std
-        lo, hi = _MOTION_BAND_HZ
+        lo, hi = MOTION_BAND_HZ
         hi = min(hi, self.fs / 2.0 - 0.01)
         lo = max(lo, 0.01)
-        sos = sps.butter(3, [lo, hi], btype="bandpass", fs=self.fs, output="sos")
+        if hi <= lo:
+            return fallback_std  # band not observable at this sample rate
+        if x_d.size < 14:
+            return fallback_std  # window shorter than the filter padding
+        order = 3 if x_d.size >= 30 else 2
+        sos = sps.butter(order, [lo, hi], btype="bandpass", fs=self.fs,
+                         output="sos")
         b = sps.sosfiltfilt(sos, x_d)
         return float(np.sqrt(np.mean(b ** 2)))
 
@@ -156,5 +172,7 @@ class MotionAnalyzer:
             return None
         if self.path_loss_exponent <= 0:
             return None
+        if not np.isfinite(rssi_dbm) or self.ref_distance_m <= 0:
+            return None  # non-finite reading or nonsense reference distance
         return self.ref_distance_m * 10.0 ** (
             (self.rssi_ref_dbm - rssi_dbm) / (10.0 * self.path_loss_exponent))

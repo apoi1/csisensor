@@ -97,3 +97,68 @@ def test_duplicate_and_out_of_order_timestamps_dropped():
     a.push(t[19], rows[19], rssi[19])   # duplicate timestamp
     a.push(t[5], rows[5], rssi[5])      # out-of-order timestamp
     assert len(a._times) == n_before
+
+
+def test_nonfinite_amplitudes_are_dropped():
+    # R3-nan-inputs: one NaN/Inf subcarrier (or timestamp) must be dropped,
+    # never allowed to poison the whole window.
+    t, rows, rssi = synth_matrix("vitals")
+    a = MotionAnalyzer(fs=FS, window_s=WINDOW_S)
+    feed(a, t, rows, rssi)
+    n_before = len(a._times)
+    a.push(t[-1] + 1.0, np.r_[rows[0, :3], np.nan], -52.0)  # NaN subcarrier
+    a.push(t[-1] + 2.0, rows[1] + np.inf, -52.0)            # Inf subcarrier
+    a.push(float("nan"), rows[2], -52.0)                    # NaN timestamp
+    assert len(a._times) == n_before
+    est = a.estimate()
+    assert est is not None
+    assert np.isfinite(est.window_std) and np.isfinite(est.motion_rms)
+
+
+def test_nonfinite_rssi_reading_is_dropped_not_the_packet():
+    # The amplitude sample survives; only the broken RSSI reading is lost.
+    t, rows, _ = synth_matrix("vitals")
+    a = MotionAnalyzer(fs=FS, window_s=WINDOW_S)
+    feed(a, t, rows, np.full(t.size, np.nan))
+    est = a.estimate()
+    assert est is not None
+    assert est.n_samples == int(FS * WINDOW_S)
+    assert est.rssi_dbm is None and est.distance_m is None
+
+
+def test_low_sample_rate_does_not_crash():
+    # R3-low-fs-crash: Nyquist (0.5 Hz) cannot express the motion band; the
+    # analyzer must degrade to the std fallback instead of raising.
+    a = MotionAnalyzer(fs=1.0, window_s=16.0)
+    t = np.arange(16) / 1.0
+    rng = np.random.default_rng(3)
+    rows = 30.0 + rng.normal(0.0, 0.05, (t.size, 4))
+    feed(a, t, rows, np.full(t.size, -52.0))
+    est = a.estimate()
+    assert est is not None
+    assert np.isfinite(est.motion_rms)
+
+
+def test_small_window_breathing_is_still_not_moving():
+    # R3-small-window-fallback: 16 samples (< 30) -> 2nd-order bandpass, so
+    # 0.3 Hz breathing stays out of the motion band instead of tripping the
+    # MOVING threshold through the full-band fallback.
+    a = MotionAnalyzer(fs=2.0, window_s=8.0)   # capacity floor: 16 samples
+    t = np.arange(a.capacity) / 2.0
+    rng = np.random.default_rng(5)
+    rows = (30.0 + 3.0 * np.sin(2 * np.pi * 0.3 * t)[:, None]
+            + rng.normal(0.0, 0.05, (t.size, 4)))
+    feed(a, t, rows)
+    est = a.estimate()
+    assert est is not None
+    assert est.state is PresenceState.STILL
+
+
+def test_distance_guards_nonfinite_and_bad_reference():
+    # R3-distance-guard-coverage: non-finite RSSI and non-positive reference
+    # distance must yield None instead of NaN / nonsense distances.
+    a = MotionAnalyzer(fs=FS, window_s=WINDOW_S)
+    assert a._distance(float("nan")) is None
+    assert a._distance(float("-inf")) is None
+    b = MotionAnalyzer(fs=FS, window_s=WINDOW_S, ref_distance_m=0.0)
+    assert b._distance(-52.0) is None
