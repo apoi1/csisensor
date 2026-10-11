@@ -10,7 +10,7 @@ ESP32-S3 nodes (CSI capture) ──MQTT──► Mosquitto (Docker) ◄── Py
 ```
 
 - **Amplitude-only CSI** — the firmware discards subcarrier phase and publishes only `a_k = |H_k|`.
-- **Single antenna per link** — no antenna array, no per-link AoA. **Multiple links (multi-ESP32) ARE supported** since 2026-10: each device publishes to its own topic and the backend fuses per band (see §11).
+- **Single antenna per link** — no antenna array, no per-link AoA. **Multiple links (multi-ESP32) ARE supported** since 2026-10: each device publishes to its own topic and the backend fuses per band (see §8).
 - **Estimated today** — presence (absent / still / moving) and a coarse RSSI link-distance.
 - **Not estimated** — geometric coordinates (x/y), posture, body orientation, angle of arrival.
 
@@ -18,7 +18,7 @@ ESP32-S3 nodes (CSI capture) ──MQTT──► Mosquitto (Docker) ◄── Py
 
 **Firmware (ESP32-S3, STA mode, ESP-IDF v5.x).** The router/AP emits 802.11n OFDM frames; the ESP32 receives them. A lwIP ping session to the gateway (`CSI_INTERVAL_MS` = 100 ms) generates steady traffic so CSI callbacks fire at `fs ≈ 10 Hz`.
 
-The native ESP-IDF CSI API is used: `esp_wifi_set_csi_config` (`lltf_en`, `htltf_en`, `stbc_htltf2_en`, `ltf_merge_en`, `channel_filter_en`, `manu_scale` all set to `false`) plus `esp_wifi_set_csi_rx_cb`. The callback receives a `wifi_csi_info_t` containing:
+The native ESP-IDF CSI API is used: `esp_wifi_set_csi_config` (`lltf_en`, `htltf_en`, `stbc_htltf2_en`, `ltf_merge_en` set to `true`; `manu_scale` to `false`; `channel_filter_en` follows `CSI_CHANNEL_FILTER` — `true` in `config.h`, the IDF's adjacent-subcarrier smoothing for higher SNR) plus `esp_wifi_set_csi_rx_cb`. The callback receives a `wifi_csi_info_t` containing:
 
 - `csi_buf` — signed I/Q byte pairs,
 - `csi_len` — length in bytes → `K = csi_len/2` subcarriers,
@@ -46,7 +46,7 @@ t_us,rssi,n,seq,a0..a(K-1)
 
 to topic `esp32/csi/raw` on a Mosquitto broker (Docker).
 
-**Backend (Python).** A paho-mqtt `CsiSubscriber` pushes parsed packets (`t_us`, `rssi`, `n`, `seq`, `amps` ndarray) into `queue.Queue(maxsize=1024)`; the GUI drains the queue at 5 Hz.
+**Backend (Python).** A paho-mqtt `MultiLinkSubscriber` (`link_manager.py`, subclass of `CsiSubscriber`) subscribes the wildcard `esp32/+/csi/raw` plus the legacy flat topic `esp32/csi/raw`, and pushes parsed packets (`t_us`, `rssi`, `n`, `seq`, `amps` ndarray) into `queue.Queue(maxsize=1024)`, re-tagged as `(link_id, packet)` pairs; `drain_and_feed()` routes each packet to that link's isolated pipelines, the GUI drains at 5 Hz, and links are fused per band (§8).
 
 ## 3. Physical principles
 
@@ -74,7 +74,7 @@ with breathing `f_b ∈ 0.1–0.5 Hz` and faint heartbeat content at `0.8–2.0 
 \lambda = \frac{c}{f_c}, \qquad c = 299{,}792{,}458\ \mathrm{m/s}
 ```
 
-Channel 1 (`f_c = 2.412 GHz`) → `λ ≈ 12.44 cm`. The firmware does **not** publish the RF channel: pin the AP channel (firmware `config.h`, `CSI_CHANNEL_FILTER`) so that `λ` is known.
+Channel 1 (`f_c = 2.412 GHz`) → `λ ≈ 12.44 cm`. The firmware does **not** publish the RF channel, and does not pin one either: `CSI_CHANNEL_FILTER` (firmware `config.h`) is the IDF subcarrier-smoothing flag, **not** an AP-channel pin — so the wavelength is only approximately known (assume channel 1 unless the channel is measured externally).
 
 **Doppler phase sensing — not available here.** For a reflected round trip,
 

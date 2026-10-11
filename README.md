@@ -31,7 +31,7 @@ ESP32-S3 firmware (C++/ESP-IDF) ──MQTT──► Mosquitto (Docker) ◄──
 1. `docker compose up -d` (broker)
 2. Configure `src/esp32/main/config.h` (WiFi + broker IP)
 3. Build/flash from WSL: `idf.py set-target esp32s3 && idf.py build && idf.py -p /dev/ttyACM0 flash monitor`
-4. Windows: `cd backend && python -m venv .venv && .\.venv\Scripts\Activate.ps1 && pip install -r requirements.txt`
+4. Windows (PowerShell): `cd \\wsl.localhost\Ubuntu\home\tilin\dev\projects\c++\sensorproject\backend` (the repo lives in the WSL filesystem; Windows reaches it through this share — no files are copied), then `python -m venv .venv`, `.\.venv\Scripts\Activate.ps1`, `pip install -r requirements.txt` — full recipe: `DEPLOYMENT.md` §8
 5. Dry-run: `python ..\scripts\simulate_esp32.py --scenario moving` + `python main.py` (scenario options: `resting`, `moving`, `absent`; add `--device-id <id>` per node to dry-run multi-ESP32 links)
 6. Phone view: `python web_viewer.py` and open `http://<PC-LAN-IP>:8080` on any phone on the same Wi-Fi (DEPLOYMENT.md §9)
 7. Live: see `DEPLOYMENT.md`

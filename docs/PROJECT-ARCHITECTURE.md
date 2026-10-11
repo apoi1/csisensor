@@ -4,9 +4,10 @@
 Pipeline de seguimiento vital (pulso/respiración) mediante WiFi CSI. Utiliza el ruido y desplazamiento de fase en las subportadoras (subcarriers) del protocolo WiFi 802.11n para detectar micro-movimientos torácicos.
 
 ## Pipeline de Datos
-1. **Adquisición (ESP32-S3):** Captura CSI nativa (`esp_wifi_set_csi_rx_cb`). Genera tráfico constante mediante ping (~10Hz) al gateway. Publica en MQTT tópico `esp32/csi/raw` como CSV `t_us,rssi,n,seq,a0...aN`.
+1. **Adquisición (ESP32-S3):** Captura CSI nativa (`esp_wifi_set_csi_rx_cb`). Genera tráfico constante mediante ping (~10Hz) al gateway. Publica en MQTT como CSV `t_us,rssi,n,seq,a0...aN`; cada dispositivo publica en su tópico `esp32/<id>/csi/raw` (id = últimos 3 bytes de la MAC) y el tópico plano `esp32/csi/raw` queda como caso base de un solo dispositivo.
 2. **Transporte:** Mosquitto Broker (Docker).
 3. **Procesamiento (Python):** 
+   - **MultiLinkSubscriber (`link_manager.py`):** se suscribe a `esp32/+/csi/raw` (wildcard multi-dispositivo) más el tópico plano `esp32/csi/raw` (compatibilidad); etiqueta cada paquete con su link id (derivado del tópico) y lo enruta a pipelines aislados por link, que luego se fusionan por banda (max SNR).
    - **VitalsProcessor:** Mantiene ventana deslizante (15s). Selecciona el mejor subcarrier por SNR en banda (0.1-0.5Hz resp, 0.8-2.0Hz heart). FFT + interpolación parabólica para estimar frecuencia.
    - **MqttSubscriber:** Listener desacoplado (paho-mqtt) que vuelca a `queue.Queue`.
    - **MotionAnalyzer:** Ventana deslizante de (amplitud media CSI, RSSI); clasifica presencia (Ausente/En reposo/Movimiento) por umbral de desviación estándar y RMS de la banda de movimiento (0.5–3.0 Hz); estima la distancia de enlace RSSI vía modelo log-distance path-loss.
@@ -15,12 +16,14 @@ Pipeline de seguimiento vital (pulso/respiración) mediante WiFi CSI. Utiliza el
 ## Stack Tecnológico
 - **Firmware:** ESP-IDF v5.x (C++11/C++20), lwIP (ping), esp-mqtt.
 - **Backend:** Python 3.10+, `numpy`, `scipy` (filtros butterworth sosfiltfilt, FFT).
+- **Multi-link (backend):** `link_manager.py` (`MultiLinkSubscriber`, fusión multi-ESP32 por banda max SNR).
 - **GUI:** PyQt5 (Qt5Agg backend), Matplotlib.
+- **Web viewer:** aiohttp (HTTP + WebSocket, `web_viewer.py` + `web_static/`), sin Qt.
 - **Entorno:** WSL2 (firmware) / Windows 10/11 (Docker/Python).
 
 ## Estado de implementación
 - [x] Firmware nativo con API ESP-IDF v5.
-- [x] Backend de procesamiento con FFT (6 tests unitarios pasan).
+- [x] Backend de procesamiento con FFT (suite 45/45: estimador, parser, analizador de presencia/movimiento, link manager multi-ESP32, config y web viewer).
 - [x] GUI en tiempo real con 3 plots y etiquetas dinámicas.
 - [x] Script simulador para dry-run.
 - [x] Guía de deployment (DEPLOYMENT.md) completa.
@@ -28,6 +31,8 @@ Pipeline de seguimiento vital (pulso/respiración) mediante WiFi CSI. Utiliza el
 - [x] Panel Body + paneles físicos en la GUI (heatmap/espectrograma/energía de movimiento).
 - [x] Escenarios del simulador (resting/moving/absent).
 - [x] docs/SIGNAL-MODELING.md (modelo de señal, matemática y calibración).
+- [x] `link_manager.py`: MultiLinkSubscriber + fusión multi-ESP32 por banda (max SNR) con presencia conservadora.
+- [x] Web viewer LAN (`web_viewer.py` + `web_static/`, aiohttp) para teléfonos.
 
 ## Funciones de la GUI y evaluación de la posición del cuerpo
 

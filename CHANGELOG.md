@@ -49,6 +49,17 @@ No tagged releases yet; recent history lives under Unreleased.
   resting baseline.
 - ESP32 simulator now publishes the decaying motion offset between episodes
   (native-review CRITICAL correction, `dafca66`).
+- **Multi-ESP32 link hardening and resilience corrections** from the
+  native-review rounds: subscriber registers exactly the patterns it
+  subscribes (no hidden single-topic state), `MAX_LINKS=16` registry cap
+  with always-admit LRU eviction of the stalest link, 20 s stale-link
+  expiry pruned before every fusion pass, full registry lock coverage,
+  simulator `--topic` precedence, checked `esp_read_mac` in the firmware
+  (commits `f01f169`, `7ef3019`, `18aaff8`).
+- **GUI status bar** now shows the fused primary (heart-winning) link
+  instead of the alphabetically-first link; `n_links()`/`primary_link()`
+  accessor reads are locked; always-admit ingest docstring and dead
+  rejection branch removed (commit `f41281a`).
 
 ### Earlier
 - Initial end-to-end pipeline: ESP32-S3 firmware (native ESP-IDF CSI API,

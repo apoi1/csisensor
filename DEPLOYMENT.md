@@ -155,6 +155,21 @@ pip install -r requirements.txt
 python main.py --host localhost
 ```
 
+> **Where the repo lives (no copy needed):** the tree lives in the **WSL
+> filesystem** (`~/dev/projects/c++/sensorproject` on Ubuntu) because the
+> firmware builds there; Windows reaches that same tree through the
+> `\\wsl.localhost\Ubuntu\...` network share — that is the directory the `cd`
+> above enters. `requirements.txt` is `backend/requirements.txt` inside that
+> tree: nothing gets copied anywhere; once inside `backend/`, plain
+> `pip install -r requirements.txt` reads it through the share. The `.venv`
+> it creates is a **Windows** venv (Windows binaries, `Scripts\`) stored on
+> the WSL disk — only Windows Python uses it, and the one-time `pip install`
+> runs slower over the share than on native NTFS (runtime reads are small
+> and fine). Venvs are never portable across OSes: a **separate Linux venv**
+> inside WSL is only needed for headless work there (`pytest`,
+> `web_viewer.py` — they never import Qt, so PyQt5 is not needed on that
+> side).
+
 If `Activate.ps1` is blocked: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
 ### Dry-run WITHOUT hardware (recommended first)

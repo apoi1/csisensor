@@ -82,7 +82,7 @@ Referencia única de: (1) qué herramientas usa cada capa y por qué, (2) la met
 
 **Gestión del venv**: no se necesita conda/poetry/pipenv — el `venv` integrado alcanza:
 ```powershell
-# Windows, dentro de backend/
+# Windows, dentro de backend/ (el repo vive en el FS de WSL; entrá por \\wsl.localhost\Ubuntu\... — ver DEPLOYMENT.md §8; no se copia nada)
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1        # si lo bloquea: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 pip install -r requirements.txt
@@ -377,15 +377,26 @@ Si algún día hace falta robustez que el DSP puro no da (mucho movimiento, ambi
                                      ▼
               Mosquitto 2.x (contenedor Docker en Windows, puerto 1883)
                                      │
+                                     ├─ rama paralela (sin Qt): web_viewer.py
+                                     │  (aiohttp, WebSocket) — consumidor paho
+                                     │  propio; snapshot ~1 Hz a cada navegador
+                                     │  (teléfonos) en la LAN
+                                     │
                                      ▼
 ┌────────────────────── Backend Python (Windows, venv) ────────────────────────┐
-│ CsiSubscriber (hilo de red paho)                                             │
-│   └─ parse_csi_payload() → CsiPacket → queue.Queue(1024)  ← desacopla red/GUI │
-│        └─ QTimer de la GUI (5 Hz) drena la cola                              │
-│             └─ VitalsProcessor.push(t, amps) → deque deslizante (150)         │
-│                  └─ cada 1 s: estimate()  [§3.4: detrend→Hann→FFT→δ→SNR]     │
-│                       └─ PyQt5: 3 gráficos + BPM / resp·min⁻¹ + SNR           │
-└───────────────────────────────────────────────────────────────────────────────┘
+│ MultiLinkSubscriber (link_manager.py, hilo de red paho)                      │
+│   suscribe esp32/+/csi/raw + esp32/csi/raw (legacy)                          │
+│   └─ parse_csi_payload() → CsiPacket → queue.Queue(1024), etiquetado         │
+│      como (link_id, packet)  ← desacopla red/consumidores                    │
+│        └─ QTimer de la GUI (5 Hz): links.drain_and_feed() drena la cola      │
+│             └─ LinkManager: VitalsProcessor + MotionAnalyzer por link        │
+│                (pipelines aislados; deque deslizante 150 por link)           │
+│                └─ cada 1 s: estimate()  [§3.4: detrend→Hann→FFT→δ→SNR]       │
+│                     └─ fusión: max SNR por banda, presencia conservadora     │
+│                          └─ PyQt5: grilla 2×3 (trazas + heatmap +            │
+│                             espectrograma + energía de movimiento)           │
+│                             + fila Body + BPM / resp·min⁻¹ + SNR             │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Formato del payload** (CSV ASCII, ~64 subportadoras ≈ 450 bytes @ 10 Hz ≈ 4.5 kB/s — trivial para Mosquitto):
@@ -409,7 +420,7 @@ t_us,rssi,n,seq,a0,a1,...,aN
 | Ruta | Contenido |
 |---|---|
 | `src/esp32/` | Firmware ESP-IDF v5.x: `main/main.cpp` (CSI→cola→MQTT), `main/config.h` (SSID, broker, `USE_TRAFFIC_PING`, `CSI_INTERVAL_MS`), `CMakeLists.txt`, `sdkconfig.defaults` |
-| `backend/` | `config.py`, `csi_packets.py`, `mqtt_subscriber.py`, `vitals_processor.py`, `gui.py`, `main.py`, `tests/` |
+| `backend/` | `config.py`, `csi_packets.py`, `mqtt_subscriber.py`, `vitals_processor.py`, `link_manager.py`, `motion_analyzer.py`, `web_viewer.py`, `web_static/`, `gui.py`, `main.py`, `tests/` |
 | `scripts/simulate_esp32.py` | Simulador de CSI sintético (integración sin hardware) |
 | `docker-compose.yaml` + `docker/mosquitto/` | Broker local (imagen `eclipse-mosquitto:2`) |
 | `DEPLOYMENT.md`, `docs/` | Guía de despliegue y esta referencia |
@@ -422,6 +433,7 @@ t_us,rssi,n,seq,a0,a1,...,aN
 | Documentación ESP-IDF (ESP32-S3) | https://docs.espressif.com/projects/esp-idf/en/v5.3.1/esp32s3/ |
 | Eclipse Mosquitto (broker MQTT; imagen `eclipse-mosquitto:2`) | https://github.com/eclipse/mosquitto |
 | paho-mqtt (cliente Python) | https://github.com/eclipse/paho.mqtt.python |
+| aiohttp (servidor HTTP + WebSocket del web viewer) | https://github.com/aio-libs/aiohttp |
 | numpy | https://github.com/numpy/numpy |
 | scipy (procesamiento de señales) | https://github.com/scipy/scipy |
 | PyQt5 (Riverbank Computing) | https://pypi.org/project/PyQt5/ |
@@ -434,7 +446,7 @@ t_us,rssi,n,seq,a0,a1,...,aN
 ### 5.3 Datasets
 
 - **No se usa ningún dataset externo.** La validación es de dos niveles:
-  1. **Unit tests** (`backend/tests/`): señales CSI sintéticas con verdad conocida (60 bpm / 15 resp·min⁻¹) → 32/32 pasando; el estimador debe recuperar la frecuencia inyectada ±5 bpm y ±3 /min, y una señal plana debe dar `"-"`. La suite cubre: estimador de signos vitales, parser de paquetes, analizador de presencia/movimiento, config por env (incluido el sentinel `none`), endurecimiento de entradas del procesador, y el pipeline del web viewer.
+  1. **Unit tests** (`backend/tests/`): señales CSI sintéticas con verdad conocida (60 bpm / 15 resp·min⁻¹) → 45/45 pasando; el estimador debe recuperar la frecuencia inyectada ±5 bpm y ±3 /min, y una señal plana debe dar `"-"`. La suite cubre: estimador de signos vitales, parser de paquetes, analizador de presencia/movimiento, fusionador multi-ESP32 (`link_manager`: ruteo por tópico, fusión por banda con mejor SNR, agregado conservador de presencia, expiración de enlaces), config por env (incluido el sentinel `none`), endurecimiento de entradas del procesador, y el pipeline del web viewer.
   2. **Simulador en vivo** (`scripts/simulate_esp32.py`) → GUI.
 - Para validación futura contra datos de terceros, los datasets públicos conocidos de WiFi sensing son: **UT-HAR** (reconocimiento de actividad, Yousefi et al. 2017), **NTU-Fi** (HAR y lenguaje de señas), **SignFi**, **Wiar** y **FallAF**. Ninguno está orientado a signos vitales (los papers de esa área usan capturas propias de laboratorio), así que la estrategia de este proyecto es generar los datos con el propio ESP32 y el simulador.
 - Lecturas académicas del área: §3.7.
@@ -451,4 +463,4 @@ t_us,rssi,n,seq,a0,a1,...,aN
 
 ---
 
-*Mantener este archivo sincronizado con el stack real. Última revisión: alineado con el firmware ESP-IDF v5.3.x y el backend verificado (32/32 tests, incluye web viewer).*
+*Mantener este archivo sincronizado con el stack real. Última revisión: alineado con el firmware ESP-IDF v5.3.x y el backend verificado (45/45 tests, incluye web viewer).*

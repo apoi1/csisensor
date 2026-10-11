@@ -51,7 +51,9 @@ config change:
 | 7 | Docs: DEPLOYMENT multi-node subsection, README, CHANGELOG, SIGNAL-MODELING §11 | done | §8 Multi-device links (theory + design + fusion math); DEPLOYMENT §10 multi-node dry-run; README rows; CHANGELOG |
 | 8 | Native review (RDD on) + merge | pending | first transaction review-4ab1b9c40a939b06 ESCALATED terminal (native_stop_required): 4 lenses + refuter captured; refuter refuted R3-3 with proof; 5 findings unknown-causality -> maintainer inspection done, graded in this doc; fresh transaction started after the hardening commit |
 | 9 | Hardening follow-up (R3-1, R3-5, R3-12, R3-13) | done | commit f01f169: native multi-pattern subscriber state, MAX_LINKS=16 registry cap, simulator --topic precedence + note, firmware esp_read_mac check; 42/42 tests |
-| 10 | Fresh native review of the corrected range + merge | pending | new transaction over fa606ce..f01f169 |
+| 10 | Fresh native review of the corrected range + merge | pending | superseded — the actual arc is rows 11–12 (fresh lineage review + risk-gated closure, see below) |
+| 11 | R4 resilience corrections + fresh native review | done | 7ef3019 + 18aaff8 (always-admit LRU, 20 s stale pruning, full lock); fresh lineage review-d27f513bb465b0e5 escalated terminal (targeted_validator_rejected) after the validator relay failed natively |
+| 12 | Second fresh review + risk-gated closure + verifier fixes | done | review-2398011e737d2561: 3/4 lenses admitted (risk/resilience/readability), reliability slot failed native-operation-failed → escalated unknown_causality (R2-MisleadingBestLink, R3-13, R3-6/7/9, R4-2); native review unavailable → ASSESS risk-gated plan (self-verification + independent verifier, 6/6 PASS); findings fixed in f41281a; 45/45 |
 
 ## Maintainer grading of the escalated review (2026-10-04)
 
@@ -67,3 +69,4 @@ The reliability lens (nemotron-3-ultra-550b) produced 16 findings; the refuter r
 - Test-design notes: gross movement must be COHERENT across subcarriers (per-subcarrier noise averages out in the mean — physically right and it makes the Moving threshold observable); white noise is NOT flat (its in-band peak-vs-median often clears the 6 dB gate) — constant amplitudes are the correct gate-honesty fixture.
 - Smoke: web viewer serves the page (HTTP 200) and accepts WS upgrades (101 in logs); the WS round-trip could not be completed in this sandbox (background-process pipes retained by the tool) — left for the user-side dry-run; serialization is unit-tested end to end (json.dumps of every snapshot shape).
 - Firmware not compiled here (no ESP-IDF in this WSL — user-side task): change is minimal (topic buffer built once in publisher_task via esp_read_mac + snprintf).
+- 2026-10-09: 45/45 backend tests pass after f41281a (pytest 9.1.1, ~2.6 s); independent verifier readback 6/6 PASS.

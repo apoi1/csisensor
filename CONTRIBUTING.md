@@ -16,7 +16,7 @@ keep experimental claims out of user-facing copy.
 
 ```console
 cd backend
-python -m pytest tests -q          # full suite must pass (currently 32 tests)
+python -m pytest tests -q          # full suite must pass (currently 45 tests)
 python -m py_compile <touched>.py
 ```
 
@@ -27,8 +27,9 @@ python -m py_compile <touched>.py
    `docs:`, `test:`, `chore:`. Tests and docs travel with the behavior they
    cover — never a "docs catch-up" commit after the fact.
 3. Keep the DSP modules import-light: `vitals_processor`, `motion_analyzer`,
-   `csi_packets` and `web_viewer` must not import Qt, so they stay testable
-   headless (WSL has no PyQt5). Only `gui.py` and `main.py` touch the GUI.
+   `csi_packets`, `link_manager` and `web_viewer` must not import Qt, so
+   they stay testable headless (WSL has no PyQt5). Only `gui.py` and
+   `main.py` touch the GUI.
 4. Update `DEPLOYMENT.md` / `README.md` / `docs/` in the same unit of work
    when behavior, interfaces or commands change.
 5. New runtime dependencies go into `backend/requirements.txt` with a lower
