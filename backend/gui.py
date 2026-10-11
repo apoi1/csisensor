@@ -140,9 +140,9 @@ class VitalsWindow(QMainWindow):
             "connected" if self.links.sub.is_connected() else "disconnected",
             self._pkt_rate, self.links.fill(), self.links.capacity())
         if self.links.n_links() > 1:
-            status += " | links {} (best {})".format(
+            status += " | links {} (primary {})".format(
                 ", ".join(self.links.link_ids()),
-                self.links.link_ids()[0] if self.links.fill() else "-")
+                self.links.primary_link() or "-")
         self.statusBar().showMessage(status)
 
     def _redraw_raw(self):

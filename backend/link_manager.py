@@ -152,11 +152,13 @@ class LinkManager:
         return sorted(self._links.keys())
 
     def n_links(self) -> int:
-        return len(self._links)
+        with self._lock:
+            return len(self._links)
 
     def primary_link(self):
         """Heart-winning link id (None until the first fused estimate)."""
-        return self._primary
+        with self._lock:
+            return self._primary
 
     def fill(self) -> int:
         """Filled samples of the primary link's vitals window."""
@@ -177,15 +179,13 @@ class LinkManager:
     def ingest(self, link_id: str, packets) -> int:
         """Push packets straight into one link's pipelines (test-friendly).
 
-        A full registry evicts a STALE link (LRU) for the newcomer; when
-        every link is live it rejects the new device instead of starving
-        the active fleet (review findings R4-1 / R3-SilentDropOnRegistryFull).
-        Returns 0 for rejected (unknown, live registry full) packets.
+        The registry always admits the link: when it is full (MAX_LINKS),
+        the stalest link is evicted (LRU) to make room, so a stream of
+        transient devices can never lock a legitimate newcomer out
+        (review finding R4-1).
         """
         with self._lock:
             pair = self._pipelines(link_id)
-        if pair is None:
-            return 0
         proc, motion = pair
         for pkt in packets:
             proc.push(pkt.t_s, pkt.amps)
