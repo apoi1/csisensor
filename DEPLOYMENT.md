@@ -36,8 +36,10 @@ docker compose logs mosquitto # verify: "mosquitto version 2.x running"
 The broker also listens on **9001 (MQTT over WebSockets)** — mapped by
 docker-compose and enabled in `mosquitto.conf`. The bundled web viewer
 (§9) does not use it; it is there for future browser clients that talk to
-the broker directly. After editing `mosquitto.conf`, apply it with
-`docker compose restart mosquitto`.
+the broker directly. The broker image **bakes `mosquitto.conf` in at build
+time** (no runtime bind mount), so `docker compose up` works from both
+PowerShell and WSL; after editing `mosquitto.conf`, apply the change with
+`docker compose up -d --build mosquitto`.
 
 Publish a test message to validate the chain:
 
