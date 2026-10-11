@@ -47,4 +47,4 @@ verifier pass, and lands the 4 pending doc-sync edits that predate it.
 | 4 | SIGNAL-MODELING: fix §1 cross-ref (§11→§8), §2 csi flags (real values from main.cpp:295-300), §2 backend paragraph (MultiLinkSubscriber routing), §3 CSI_CHANNEL_FILTER correction (smoothing flag; AP channel neither pinned nor published) | done | verified against main.cpp/config.h |
 | 5 | CONTRIBUTING rule 3: import-light list += link_manager | done | one word, pending 45-count hunk preserved |
 | 6 | odd/tasks/multi-esp32.md: add the R4 round + review arc + f41281a rows, update task-10 note and verification evidence (45/45) | done | rows 11-12 appended, historical 40/40 lines untouched |
-| 7 | Parent: verify all edits, run suite, commit the 4 pending doc-sync edits + these edits as work-unit `docs:` commit(s) | in-progress | suite 45/45 (parent run, 2.54 s); commit landing now |
+| 7 | Parent: verify all edits, run suite, commit the 4 pending doc-sync edits + these edits as work-unit `docs:` commit(s) | done | suite 45/45 (parent run, 2.54 s); work unit commit **76b5283** (9 files, +119/-22); closure recorded in the follow-up docs(odd) commit |
