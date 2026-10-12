@@ -85,7 +85,7 @@ abbr --add idfenv 'source ~/esp/esp-idf/export.fish'
 
 > In bash the only difference is `source export.fish` → `. ./export.sh`; every other line above is identical.
 
-> Version matters: the firmware targets the ESP-IDF **v5.x** API (esp-mqtt nested broker config, `esp_wifi_set_csi_rx_cb`). The CSI API is native to ESP-IDF; no external component is required.
+> Version matters: the firmware targets the ESP-IDF **v5.x** API (esp-mqtt nested broker config, `esp_wifi_set_csi_rx_cb`). The CSI API is native to ESP-IDF; no external component is required. The required CSI feature flag is already pinned in `src/esp32/sdkconfig.defaults` (`CONFIG_ESP_WIFI_CSI_ENABLED=y`) — no menuconfig step is needed.
 
 ## 4. USB serial from WSL (usbipd-win)
 
