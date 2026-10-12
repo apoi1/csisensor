@@ -7,3 +7,8 @@ CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 
 # 1 kHz FreeRTOS tick → precise pdMS_TO_TICKS() pacing
 CONFIG_FREERTOS_HZ=1000
+
+# THE core feature: compile CSI capture support into the Wi-Fi driver.
+# Without this, esp_wifi_set_csi(true) fails with ESP_FAIL and the
+# firmware aborts in a boot loop ("CSI not enabled in menuconfig!").
+CONFIG_ESP_WIFI_CSI_ENABLED=y
