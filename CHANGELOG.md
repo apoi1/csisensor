@@ -74,6 +74,11 @@ No tagged releases yet; recent history lives under Unreleased.
   `Activate.ps1` fails as "not digitally signed" even under `RemoteSigned`;
   the guide now shows the activation-free path
   (`.\.venv\Scripts\python.exe <script>`).
+- **scripts/flash-board.ps1**: one-shot Windows flasher for the ESP32-S3
+  (auto-detects the COM port of the native USB-Serial-JTAG, flashes the
+  WSL-built artifacts over the `\\wsl.localhost` share). Flashing the S3
+  through the usbipd WSL tunnel is unreliable — the chip reset re-enumerates
+  its USB and drops the tunnel mid-handshake.
 
 ### Earlier
 - Initial end-to-end pipeline: ESP32-S3 firmware (native ESP-IDF CSI API,

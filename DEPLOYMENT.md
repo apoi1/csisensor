@@ -302,6 +302,7 @@ automatically; the web page's meta line shows `links 2`.
 | BPM shows "-" | SNR below threshold: shorten distance, remove motion, try `--window 20` for a longer window. |
 | Body row stuck on "waiting for data..." | Motion window (15 s) still filling, or the CSI stream is not reaching the backend; check the pkt/s rate in the status bar. |
 | `idf.py: command not found` | Run `idfenv` (or `source ~/esp/esp-idf/export.fish`) in this tab — in bash: `. ~/esp/esp-idf/export.sh`. |
+| Flash fails with `No serial data received` and then `/dev/ttyACM0` vanishes | The S3's native USB re-enumerates on every chip reset, which drops the usbipd tunnel mid-flash. Flash from Windows instead (no tunnel): install esptool in the venv (`.\.venv\Scripts\python.exe -m pip install esptool`), `usbipd detach --busid <X-X>`, then `powershell -ExecutionPolicy Bypass -File .\scripts\flash-board.ps1` (auto-detects the COM port). |
 
 ## 12. Security notes
 
