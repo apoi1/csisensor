@@ -30,7 +30,7 @@ if (-not $Port) {
     if ($dev -and $dev.Name -match '\((COM\d+)\)') {
         $Port = $Matches[1]
     } else {
-        Write-Error "ESP32-S3 not found on any COM port. If it is attached to WSL, detach it first (admin): usbipd detach --busid 1-6"
+        Write-Error "ESP32-S3 not found on any COM port. If it is attached to WSL, detach it first from an admin PowerShell: usbipd detach --busid <X-X> (find the BUSID of the board with 'usbipd list')."
         exit 1
     }
 }
