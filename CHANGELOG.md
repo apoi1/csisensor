@@ -18,6 +18,13 @@ Format based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/).
   estimate cadence instead of the 5 Hz data tick, with pinned time axes
   and y-only autoscaling — a measurably smoother interface with the same
   data path.
+- **Zombie-proof .cmd wrappers** for the PowerShell tools
+  (`build-portable-kit.cmd`, `flash-board.cmd`, `firewall-rules.cmd`):
+  batch files are not subject to the PowerShell execution policy, and
+  their invocation line is short enough never to split on paste — the
+  two failure modes observed live (long UNC paths wrapping mid-paste
+  and the remote-zone "not digitally signed" rejection when a split
+  line ran the .ps1 under the parent session's policy).
 - **Portable system kit**: `scripts/build-portable-kit.ps1` assembles the
   "whole system portable" folder — the PyInstaller viewer exe plus the
   official Mosquitto broker binaries (copied from a one-time official
