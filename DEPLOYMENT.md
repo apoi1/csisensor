@@ -303,6 +303,7 @@ automatically; the web page's meta line shows `links 2`.
 | Body row stuck on "waiting for data..." | Motion window (15 s) still filling, or the CSI stream is not reaching the backend; check the pkt/s rate in the status bar. |
 | `idf.py: command not found` | Run `idfenv` (or `source ~/esp/esp-idf/export.fish`) in this tab — in bash: `. ~/esp/esp-idf/export.sh`. |
 | Flash fails with `No serial data received` and then `/dev/ttyACM0` vanishes | The S3's native USB re-enumerates on every chip reset, which drops the usbipd tunnel mid-flash. Flash from Windows instead (no tunnel): install esptool in the venv (`.\.venv\Scripts\python.exe -m pip install esptool`), `usbipd detach --busid <X-X>`, then `powershell -ExecutionPolicy Bypass -File .\scripts\flash-board.ps1` (auto-detects the COM port). |
+| esptool from Windows also says `No serial data received` on COM3 | The board has no auto-download circuit: it never enters download mode by itself. Manual entry: hold **BOOT**, tap **RST**, release **BOOT** — the board re-enumerates as the composite JTAG/serial unit with a new COM number, sits in ROM download mode waiting, and `flash-board.ps1` detects that enumeration and flashes with `--before no-reset`. After the flash, tap **RST** if the app does not start by itself. |
 
 ## 12. Security notes
 
