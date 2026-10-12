@@ -37,11 +37,11 @@
 #include "mqtt_client.h"
 
 #include "lwip/ip4_addr.h"
+
+#include "config.h" /* project config first: it defines USE_TRAFFIC_PING */
 #if USE_TRAFFIC_PING
 #include "ping/ping_sock.h"
 #endif
-
-#include "config.h"
 
 static const char *TAG = "csi_main";
 
@@ -58,7 +58,7 @@ typedef struct {
 static QueueHandle_t           s_sample_queue;
 static esp_mqtt_client_handle_t s_mqtt;
 #if USE_TRAFFIC_PING
-static esp_ping_session_t      *s_ping;
+static esp_ping_handle_t         s_ping;   /* ping_sock.h handle (void*) */
 #endif
 
 static volatile uint32_t s_captured;
@@ -71,11 +71,11 @@ static volatile uint32_t s_publish_failed;
 extern "C" void wifi_csi_rx_cb(void *ctx, wifi_csi_info_t *info)
 {
     (void)ctx;
-    if (info == NULL || info->csi_buf == NULL) {
+    if (info == NULL || info->buf == NULL) {
         return;
     }
 
-    uint16_t n = info->csi_len / 2;            /* csi_len is bytes (I/Q pairs) */
+    uint16_t n = info->len / 2;                /* len is bytes (I/Q pairs) */
     if (n > CSI_MAX_SUBCARRIERS) {
         n = CSI_MAX_SUBCARRIERS;
     }
@@ -87,8 +87,8 @@ extern "C" void wifi_csi_rx_cb(void *ctx, wifi_csi_info_t *info)
     s.seq  = s_captured++;
 
     for (uint16_t i = 0; i < n; i++) {
-        const float re  = (float)info->csi_buf[2 * i];
-        const float im  = (float)info->csi_buf[2 * i + 1];
+        const float re  = (float)info->buf[2 * i];      /* int8_t: signed I */
+        const float im  = (float)info->buf[2 * i + 1];  /* int8_t: signed Q */
         const float mag = sqrtf(re * re + im * im);
         s.amp[i] = (uint8_t)(mag + 0.5f);    /* |I|,|Q| ≤ 127 → mag ≤ ~180 */
     }
@@ -191,7 +191,7 @@ static void mqtt_start(void)
 
     s_mqtt = esp_mqtt_client_init(&cfg);
     assert(s_mqtt != NULL);
-    esp_mqtt_client_register_event(s_mqtt, ESP_EVENT_ANY_ID, mqtt_event_cb, NULL);
+    esp_mqtt_client_register_event(s_mqtt, MQTT_EVENT_ANY, mqtt_event_cb, NULL);
     esp_mqtt_client_start(s_mqtt);
     ESP_LOGI(TAG, "MQTT client started → %s", MQTT_BROKER_URI);
 }
