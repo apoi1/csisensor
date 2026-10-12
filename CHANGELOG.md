@@ -2,9 +2,10 @@
 
 All notable changes to this project are documented here.
 Format based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/).
-No tagged releases yet; recent history lives under Unreleased.
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-10-12
 
 ### Added (2026-10-12)
 - **Portable web viewer**: `csi-web-viewer.exe` built with PyInstaller
