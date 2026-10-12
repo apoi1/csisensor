@@ -18,6 +18,11 @@ Format based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/).
   estimate cadence instead of the 5 Hz data tick, with pinned time axes
   and y-only autoscaling — a measurably smoother interface with the same
   data path.
+- **Portable system kit**: `scripts/build-portable-kit.ps1` assembles the
+  "whole system portable" folder — the PyInstaller viewer exe plus the
+  official Mosquitto broker binaries (copied from a one-time official
+  install) and a one-click `start-system.bat` — so the complete pipeline
+  runs on any Windows PC with no Python and no Docker.
 - **docs/VALIDATION-PROTOCOL.md**: the empirical harness to prove the
   sensor reads a body — empty-room falsification, controlled-breathing
   phase-lock, movement response, reference comparison, repeatability —

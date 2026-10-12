@@ -18,6 +18,9 @@ venv/
 dist/
 *.spec
 
+# Generated portable-kit (scripts/build-portable-kit.ps1)
+portable-kit/
+
 # OS / editor noise
 .DS_Store
 
