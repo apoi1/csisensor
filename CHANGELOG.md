@@ -73,7 +73,7 @@ No tagged releases yet; recent history lives under Unreleased.
   `\\wsl.localhost` share are a remote zone for PowerShell, so
   `Activate.ps1` fails as "not digitally signed" even under `RemoteSigned`;
   the guide now shows the activation-free path
-  (`..\.venv\Scripts\python.exe <script>`).
+  (`.\.venv\Scripts\python.exe <script>`).
 
 ### Earlier
 - Initial end-to-end pipeline: ESP32-S3 firmware (native ESP-IDF CSI API,

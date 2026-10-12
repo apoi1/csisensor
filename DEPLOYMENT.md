@@ -183,9 +183,9 @@ If `Activate.ps1` is blocked with "is not digitally signed": Windows treats
 the `\\wsl.localhost` share as a remote zone, so even a `RemoteSigned`
 policy blocks scripts there. Simplest fix — **skip activation entirely**
 and call the venv interpreter directly; every command in this guide then
-becomes `..\.venv\Scripts\python.exe <script>` (e.g.
-`..\.venv\Scripts\python.exe main.py --host localhost`,
-`..\.venv\Scripts\python.exe -m pip install -r requirements.txt`).
+becomes `.\.venv\Scripts\python.exe <script>` (e.g.
+`.\.venv\Scripts\python.exe main.py --host localhost`,
+`.\.venv\Scripts\python.exe -m pip install -r requirements.txt`).
 Alternative, for the current window only:
 `Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force` and
 then activate normally.
