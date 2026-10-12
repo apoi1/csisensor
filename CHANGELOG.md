@@ -69,6 +69,11 @@ No tagged releases yet; recent history lives under Unreleased.
   paste-safe one-shot admin script that (re)creates both dev firewall
   rules correctly scoped — long console pastes had silently produced an
   over-broad all-TCP rule.
+- **DEPLOYMENT §8 documents the UNC execution-policy trap**: scripts on the
+  `\\wsl.localhost` share are a remote zone for PowerShell, so
+  `Activate.ps1` fails as "not digitally signed" even under `RemoteSigned`;
+  the guide now shows the activation-free path
+  (`..\.venv\Scripts\python.exe <script>`).
 
 ### Earlier
 - Initial end-to-end pipeline: ESP32-S3 firmware (native ESP-IDF CSI API,
