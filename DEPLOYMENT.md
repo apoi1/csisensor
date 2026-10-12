@@ -55,6 +55,13 @@ The ESP32 connects from the LAN, so inbound TCP 1883 must be allowed:
 New-NetFirewallRule -DisplayName "Mosquitto 1883 (dev)" -Direction Inbound -Protocol TCP -LocalPort 1883 -Action Allow
 ```
 
+One-shot, paste-safe alternative — recreates BOTH dev rules (this one and
+the viewer rule of §9) correctly scoped; safe to re-run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\firewall-rules.ps1
+```
+
 Note the **Windows host LAN IP** (`ipconfig` -> Wi-Fi adapter IPv4). That is the IP for `MQTT_BROKER_URI` in the firmware config and for every device except the Windows backend itself (which uses `localhost`).
 
 ## 3. ESP-IDF (WSL)
@@ -237,6 +244,8 @@ Allow the port through Windows Firewall once (admin PowerShell):
 ```powershell
 New-NetFirewallRule -DisplayName "CSI Web Viewer 8080 (dev)" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow
 ```
+
+(If you ran `scripts/firewall-rules.ps1` in §2, this rule already exists.)
 
 The page needs no internet (no CDN): tiles for heart/respiration/body
 state/link distance, a 10-minute trend plot and the latest filtered

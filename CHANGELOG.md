@@ -65,7 +65,10 @@ No tagged releases yet; recent history lives under Unreleased.
   PowerShell over the `\wsl.localhost` share even when WSL's distro-mount
   services are unavailable (Windows 10 + WSL 3.x); editing the config
   requires `docker compose up -d --build mosquitto`. The obsolete compose
-  `version:` key was removed.
+  `version:` key was removed. Also adds `scripts/firewall-rules.ps1`, a
+  paste-safe one-shot admin script that (re)creates both dev firewall
+  rules correctly scoped — long console pastes had silently produced an
+  over-broad all-TCP rule.
 
 ### Earlier
 - Initial end-to-end pipeline: ESP32-S3 firmware (native ESP-IDF CSI API,
