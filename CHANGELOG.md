@@ -49,6 +49,15 @@ No tagged releases yet; recent history lives under Unreleased.
   resting baseline.
 - ESP32 simulator now publishes the decaying motion offset between episodes
   (native-review CRITICAL correction, `dafca66`).
+- **Firmware boot loop fixed** (`a1f6950`): the Wi-Fi driver ships without
+  CSI support compiled in; `sdkconfig.defaults` now pins
+  `CONFIG_ESP_WIFI_CSI_ENABLED=y` (without it `esp_wifi_set_csi(true)`
+  aborts in a boot loop caught live via the board's serial log).
+- **Live-data fix** (`a809832`): `LinkManager.ingest()` pushed a nonexistent
+  `pkt.t_s`; real `CsiPacket`s carry `t_us` (device microseconds). The first
+  live packet from the board crashed the GUI; the fix converts `t_us/1e6`
+  once, all test fixtures now build real `CsiPacket`s, and a regression test
+  feeds the real parser output through the real queue path. Suite: 46/46.
 - **Multi-ESP32 link hardening and resilience corrections** from the
   native-review rounds: subscriber registers exactly the patterns it
   subscribes (no hidden single-topic state), `MAX_LINKS=16` registry cap
