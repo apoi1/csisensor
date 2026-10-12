@@ -14,6 +14,10 @@ __pycache__/
 .venv/
 venv/
 
+# PyInstaller artifacts (portable viewer build)
+dist/
+*.spec
+
 # OS / editor noise
 .DS_Store
 
