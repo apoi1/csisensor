@@ -85,6 +85,11 @@ class VitalsWindow(QMainWindow):
         for ax in (self.ax_raw, self.ax_resp, self.ax_heart, self.ax_heat,
                    self.ax_spec, self.ax_motion):
             ax.set_xlabel("t [s]")
+        # Fixed time axes: every window/wave series is expressed relative to
+        # its own window start, so x is always [0, window_seconds]. Pinning
+        # x lets autoscale_view run y-only (much cheaper per repaint).
+        for ax in (self.ax_raw, self.ax_resp, self.ax_heart):
+            ax.set_xlim(0.0, self.cfg.window_seconds)
         self.ax_heat.set_ylabel("subcarrier k")
         self.ax_spec.set_ylabel("f [Hz]")
         self.line_raw, = self.ax_raw.plot([], [], lw=1, color="#4a90d9")
@@ -129,10 +134,14 @@ class VitalsWindow(QMainWindow):
             self._pkt_window_start = now
             self._pkt_window_count = 0
 
-        self._redraw_raw()
-
+        # Repaint throttle (A1): the whole canvas (6 axes incl. two imshows)
+        # repaints on draw_idle, so all redraws run at the estimate cadence
+        # (1 Hz) instead of every tick (5 Hz) - the data tick stays at 5 Hz
+        # only for drain + status. draw_idle calls within this callback
+        # coalesce into a single repaint.
         if now - self._last_estimate >= self.cfg.estimate_every_s:
             self._last_estimate = now
+            self._redraw_raw()
             self._apply_estimate(self.links.estimate())
             self._apply_motion(self.links.motion_estimate(), now)
 
@@ -152,8 +161,7 @@ class VitalsWindow(QMainWindow):
         t, mean = window
         self.line_raw.set_data(t, mean)
         self.ax_raw.relim()
-        self.ax_raw.autoscale_view()
-        self.canvas.draw_idle()
+        self.ax_raw.autoscale_view(scalex=False)   # x is pinned: y-only
 
     def _apply_estimate(self, est):
         if est is None:
@@ -164,10 +172,10 @@ class VitalsWindow(QMainWindow):
         t = est.wave_times_s
         self.line_resp.set_data(t, est.resp_wave)
         self.ax_resp.relim()
-        self.ax_resp.autoscale_view()
+        self.ax_resp.autoscale_view(scalex=False)  # x is pinned: y-only
         self.line_heart.set_data(t, est.heart_wave)
         self.ax_heart.relim()
-        self.ax_heart.autoscale_view()
+        self.ax_heart.autoscale_view(scalex=False)  # x is pinned: y-only
         self.canvas.draw_idle()
 
         if est.heart_bpm is not None:
@@ -251,7 +259,7 @@ class VitalsWindow(QMainWindow):
         extent = (times[0], times[-1], freqs[0], freqs[-1])
         if self.img_spec is None:
             self.img_spec = self.ax_spec.imshow(
-                sxx_db, aspect="auto", origin="lower", interpolation="bilinear",
+                sxx_db, aspect="auto", origin="lower", interpolation="nearest",
                 cmap="magma", extent=extent)
             resp_lo, resp_hi = self.cfg.resp_band_hz
             heart_lo, heart_hi = self.cfg.heart_band_hz
