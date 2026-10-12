@@ -1,10 +1,10 @@
 """Headless tests for multi-link routing, isolation and fusion."""
 import time
-from types import SimpleNamespace
 
 import numpy as np
 
 from config import Config
+from csi_packets import CsiPacket, parse_csi_payload
 from link_manager import (LINK_STALE_S, MAX_LINKS, LinkManager,
                           MultiLinkSubscriber, link_id_from_topic)
 from motion_analyzer import PresenceState
@@ -24,7 +24,8 @@ def synth_packets(heart_amp=0.9, resp_amp=3.0, bpm=60.0, resp_pm=15.0,
             + resp_amp * np.sin(2 * np.pi * f_resp * t[:, None])
             + heart_amp * np.sin(2 * np.pi * f_heart * t[:, None])
             + rng.normal(0.0, flat_noise, (n, n_sub)))
-    return [SimpleNamespace(t_s=float(t[i]), amps=rows[i], rssi=rssi)
+    return [CsiPacket(t_us=int(t[i] * 1e6), amps=rows[i], rssi=int(rssi),
+                      n=n_sub, seq=i)
             for i in range(n)]
 
 
@@ -82,7 +83,7 @@ def test_presence_aggregate_is_conservative():
     rng = np.random.default_rng(6)
     exc = rng.normal(0.0, 1.0, (t.size, 1))
     rows = 30.0 + 8.0 * exc
-    moving = [SimpleNamespace(t_s=float(t[i]), amps=rows[i], rssi=-52.0)
+    moving = [CsiPacket(t_us=int(t[i] * 1e6), amps=rows[i], rssi=-52, n=1, seq=i)
               for i in range(t.size)]
     links.ingest("still-link", still)
     links.ingest("moving-link", moving)
@@ -198,3 +199,19 @@ def test_fusion_reports_none_when_best_link_fails_gate():
     est = links.estimate()
     assert est is not None
     assert est.heart_bpm is None and est.resp_pm is None
+
+
+def test_real_parser_packets_flow_end_to_end():
+    """Regression: ingest() once used pkt.t_s, but the real parser produces
+    CsiPacket.t_us (device microseconds). The first live packet from the
+    board crashed the GUI with AttributeError; the synthetic fixtures used
+    SimpleNamespace(t_s=...) and never caught it. This feeds the REAL
+    parser's output through the REAL queue path (drain_and_feed)."""
+    links = make_manager()
+    payload = "1717000000123456,-52,4,42,178,176,171,169".encode("ascii")
+    pkt = parse_csi_payload(payload)
+    assert pkt is not None
+    links.sub._queue.put_nowait(("real", pkt))
+    assert links.drain_and_feed() == 1
+    assert links.n_links() == 1
+    assert links._links["real"][0].fill() == 1

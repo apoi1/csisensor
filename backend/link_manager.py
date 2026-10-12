@@ -188,8 +188,9 @@ class LinkManager:
             pair = self._pipelines(link_id)
         proc, motion = pair
         for pkt in packets:
-            proc.push(pkt.t_s, pkt.amps)
-            motion.push(pkt.t_s, pkt.amps, pkt.rssi)
+            t_s = pkt.t_us / 1e6   # CsiPacket carries device µs since boot
+            proc.push(t_s, pkt.amps)
+            motion.push(t_s, pkt.amps, pkt.rssi)
         return len(packets)
 
     def drain_and_feed(self, limit: int = 256) -> int:

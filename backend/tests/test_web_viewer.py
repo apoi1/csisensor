@@ -1,9 +1,8 @@
 """Headless tests for the web viewer's snapshot pipeline (no sockets)."""
-from types import SimpleNamespace
-
 import numpy as np
 
 from config import Config
+from csi_packets import CsiPacket
 from link_manager import LinkManager
 from web_viewer import ViewerState, build_app
 
@@ -26,7 +25,8 @@ def synth_packets(bpm=60.0, resp_pm=15.0, n_sub=32, seed=7, t0=100.0):
             + 3.0 * np.sin(2 * np.pi * f_resp * t[:, None])
             + 0.9 * np.sin(2 * np.pi * f_heart * t[:, None])
             + rng.normal(0.0, 0.05, (n, n_sub)))
-    return [SimpleNamespace(t_s=float(t[i]), amps=rows[i], rssi=-52.0)
+    return [CsiPacket(t_us=int(t[i] * 1e6), amps=rows[i], rssi=-52,
+                      n=n_sub, seq=i)
             for i in range(n)]
 
 
@@ -89,11 +89,12 @@ def test_corrupt_packets_never_break_the_stream():
     good = synth_packets()
     state.ingest("default", good)
     state.maybe_estimate(400.0, every_s=1.0)
-    corrupt = SimpleNamespace(t_s=500.0,
-                              amps=np.r_[good[0].amps[:3], np.nan],
-                              rssi=-52.0)
-    nan_time = SimpleNamespace(t_s=float("nan"),
-                               amps=good[1].amps, rssi=-52.0)
+    corrupt = CsiPacket(t_us=500_000_000,
+                         amps=np.r_[good[0].amps[:3], np.nan],
+                         rssi=-52, n=4, seq=999)
+    nan_time = CsiPacket(t_us=float("nan"),
+                         amps=good[1].amps, rssi=-52,
+                         n=good[1].n, seq=998)
     state.ingest("default", [corrupt, nan_time])
     state.maybe_estimate(401.0, every_s=1.0)
     snap = state.latest()
