@@ -256,6 +256,20 @@ New-NetFirewallRule -DisplayName "CSI Web Viewer 8080 (dev)" -Direction Inbound 
 
 (If you ran `scripts/firewall-rules.ps1` in §2, this rule already exists.)
 
+**Portable alternative (no Python needed on the target PC)**: build a
+standalone exe with PyInstaller and run it anywhere:
+
+```powershell
+.\.venv\Scripts\python.exe -m PyInstaller --onefile --name csi-web-viewer --add-data "web_static;web_static" web_viewer.py
+dist\csi-web-viewer.exe --broker <BROKER_IP> --host 0.0.0.0 --port 8080
+```
+
+Only ONE web viewer can hold port 8080 at a time — the Python script or
+the exe, never both. The desktop GUI (§8) is an independent consumer and
+does not serve the phone page. Phone browsers may try to force HTTPS on
+typed addresses — type the full `http://<IP>:8080` (or disable the
+browser's "always use secure connections" option).
+
 The page needs no internet (no CDN): tiles for heart/respiration/body
 state/link distance, a 10-minute trend plot and the latest filtered
 waves, with automatic reconnect. Like everything here: research tool,
@@ -267,6 +281,11 @@ not a medical device.
 2. Subject sits still, 0.5-2 m from the ESP32, in line of sight.
 3. After ~15 s the window fills and estimates appear.
 4. Motion artifacts: a single movement resets the vitals estimates for a few seconds, and the **Body row** switches to `Moving` while you move.
+
+For stable readings and the empirical validation protocol — empty-room
+falsification, controlled-breathing phase-lock against a metronome,
+reference comparison and repeatability — see
+**docs/VALIDATION-PROTOCOL.md**.
 
 ### Multi-node (multi-ESP32) setup
 

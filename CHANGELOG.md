@@ -6,6 +6,23 @@ No tagged releases yet; recent history lives under Unreleased.
 
 ## [Unreleased]
 
+### Added (2026-10-12)
+- **Portable web viewer**: `csi-web-viewer.exe` built with PyInstaller
+  (`--onefile`, `web_static` bundled) runs the viewer on any Windows x64
+  PC without Python. Only ONE web viewer can hold port 8080 at a time
+  (the Python script OR the exe, never both); the desktop GUI is an
+  independent MQTT consumer and does not serve the phone page. Build
+  artifacts (`dist/`, `*.spec`) are gitignored.
+- **GUI repaint throttling**: full-canvas repaints run at the 1 Hz
+  estimate cadence instead of the 5 Hz data tick, with pinned time axes
+  and y-only autoscaling — a measurably smoother interface with the same
+  data path.
+- **docs/VALIDATION-PROTOCOL.md**: the empirical harness to prove the
+  sensor reads a body — empty-room falsification, controlled-breathing
+  phase-lock, movement response, reference comparison, repeatability —
+  plus the stability checklist (link geometry, SNR gate, median
+  averaging).
+
 ### Added (2026-10-04, later)
 - **Multi-ESP32 links**: firmware publishes per-device topics
   (`esp32/<id>/csi/raw`, id = last 3 MAC bytes); backend gains
