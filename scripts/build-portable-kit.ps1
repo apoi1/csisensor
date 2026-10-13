@@ -39,13 +39,19 @@ $mstExe = Join-Path $KitDir "mosquitto/mosquitto.exe"
 $installed = Join-Path $env:ProgramFiles "mosquitto/mosquitto.exe"
 if (-not (Test-Path $mstExe)) {
     if (-not (Test-Path $installed)) {
-        Write-Error "Mosquitto not found. Install it once with the official installer:`n  https://mosquitto.org/files/binary/win64/mosquitto-2.1.2-install-windows-x64.exe`nthen re-run this script (it copies the binaries into the kit)."
+        Write-Error "Mosquitto not found. Install it ONCE with the official installer:`n  https://mosquitto.org/files/binary/win64/mosquitto-2.1.2-install-windows-x64.exe`nIMPORTANT: at the installer's components screen UNCHECK the 'Service'`ncomponent (it would listen on port 1883 and collide with the Docker`nbroker). Then re-run this script (it copies the binaries into the kit)."
         exit 1
     }
     New-Item -ItemType Directory -Force -Path (Join-Path $KitDir "mosquitto") | Out-Null
     Copy-Item -Path (Join-Path $env:ProgramFiles "mosquitto\*") `
               -Destination (Join-Path $KitDir "mosquitto") -Recurse -Force
     Write-Host "copied mosquitto binaries from the install dir into the kit"
+}
+
+# ---- collision guard: a Windows mosquitto service fights the Docker broker ----
+$svc = Get-Service mosquitto -ErrorAction SilentlyContinue
+if ($svc) {
+    Write-Warning "A Windows 'mosquitto' service exists (installer's Service component). It will fight the Docker broker for port 1883. Remove it from an ADMIN prompt: sc stop mosquitto; sc delete mosquitto"
 }
 
 # ---- our broker conf (matches docker/mosquitto/mosquitto.conf) -------------
