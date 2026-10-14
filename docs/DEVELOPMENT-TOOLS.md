@@ -80,6 +80,8 @@ Referencia única de: (1) qué herramientas usa cada capa y por qué, (2) la met
 | `matplotlib` | `>=3.7` | Gráficos embebidos con backend `Qt5Agg` |
 | `pytest` | `>=7.4` | Tests unitarios del procesador |
 
+Ademas del `requirements.txt`, `esptool` se instala ad hoc en el venv de Windows (`.\.venv\Scripts\python.exe -m pip install esptool`) para flashear el firmware desde `scripts/flash-board.ps1` — no es dependencia del backend y no corre en WSL.
+
 **Gestión del venv**: no se necesita conda/poetry/pipenv — el `venv` integrado alcanza:
 ```powershell
 # Windows, dentro de backend/ (el repo vive en el FS de WSL; entrá por \\wsl.localhost\Ubuntu\... — ver DEPLOYMENT.md §8; no se copia nada)

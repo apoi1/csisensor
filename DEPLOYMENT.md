@@ -49,20 +49,27 @@ docker exec -it wifisensing_mosquitto mosquitto_pub -t esp32/csi/raw -m "0,-50,2
 
 ### Allow the broker through Windows Firewall (admin PowerShell)
 
-The ESP32 connects from the LAN, so inbound TCP 1883 must be allowed:
+The ESP32 connects from the LAN, so inbound TCP 1883 must be allowed —
+scoped to the local subnet and the Private profile, so the ports only
+open to same-subnet devices and stay quiet on networks Windows marks
+Public:
 
 ```powershell
-New-NetFirewallRule -DisplayName "Mosquitto 1883 (dev)" -Direction Inbound -Protocol TCP -LocalPort 1883 -Action Allow
+New-NetFirewallRule -DisplayName "Mosquitto 1883 (dev)" -Direction Inbound -Protocol TCP -LocalPort 1883 -Action Allow -RemoteAddress LocalSubnet -Profile Private
 ```
 
 One-shot, paste-safe alternative — recreates BOTH dev rules (this one and
-the viewer rule of §9) correctly scoped; safe to re-run:
+the viewer rule of §9) with the same scoping; safe to re-run (idempotent):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\firewall-rules.ps1
 ```
 
 Note the **Windows host LAN IP** (`ipconfig` -> Wi-Fi adapter IPv4). That is the IP for `MQTT_BROKER_URI` in the firmware config and for every device except the Windows backend itself (which uses `localhost`).
+
+> The firewall rules require the network to be marked **Private** in
+> Windows (Settings > Network > Network profile); on Public networks the
+> rules stay inactive — which is the safe default on unknown Wi-Fi.
 
 ## 3. ESP-IDF (WSL)
 
@@ -133,6 +140,15 @@ I (xxxx) csi_main: MQTT connected
 I (xxxx) csi_main: traffic ping to gateway started (every 100 ms)
 I (xxxx) csi_main: csi: captured=120 qfull=0 published=120 failed=0
 ```
+
+**Flash from Windows instead** (recommended when the S3's native USB
+re-enumerates and drops the usbipd tunnel — see §11): detach the board
+(`usbipd detach --busid <X-X>`, admin PowerShell) and run
+`powershell -ExecutionPolicy Bypass -File .\scripts\flash-board.ps1`
+(there is a paste-safe `flash-board.cmd` wrapper too). It auto-detects
+the COM port and accepts `-FlashSize` — default `4MB`, matching
+`src/esp32/sdkconfig.defaults`; this board carries 16 MB, so raise both
+together if you ever need the space.
 
 ## 7. Verify the CSI stream
 
@@ -220,6 +236,13 @@ via environment variables (formulas and calibration procedures in
 | `CSI_REF_DISTANCE_M` | `1.0` | reference distance `d0` |
 | `CSI_PATH_LOSS_N` | `3.0` | log-distance path-loss exponent `n` |
 
+Connection knobs are env-overridable too (`MQTT_HOST`, `MQTT_PORT`,
+`MQTT_TOPIC`): an explicit `MQTT_TOPIC` **replaces the whole
+subscription list** with that single topic/pattern — the baseline
+contract, restored by the 2026-10-14 review cycle — while unset/legacy-
+default keeps the multi-link patterns (`esp32/+/csi/raw` + the flat
+topic). The CLI `--topic` flag always wins over the env.
+
 Until it is calibrated you can turn the distance estimate off entirely: set
 `CSI_RSSI_REF_DBM` (or `CSI_REF_DISTANCE_M`) to an empty value or `none` — the
 GUI then shows `—` for the link distance instead of an uncalibrated guess.
@@ -251,10 +274,12 @@ python web_viewer.py --broker <BROKER_IP> --host 0.0.0.0 --port 8080
 Allow the port through Windows Firewall once (admin PowerShell):
 
 ```powershell
-New-NetFirewallRule -DisplayName "CSI Web Viewer 8080 (dev)" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow
+New-NetFirewallRule -DisplayName "CSI Web Viewer 8080 (dev)" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -RemoteAddress LocalSubnet -Profile Private
 ```
 
-(If you ran `scripts/firewall-rules.ps1` in §2, this rule already exists.)
+(If you ran `scripts/firewall-rules.ps1` in §2, this rule already exists —
+both are scoped to `LocalSubnet` + the `Private` profile, so mark the
+network Private or open nothing.)
 
 **Portable alternative (no Python needed on the target PC)**: build a
 standalone exe with PyInstaller and run it anywhere:
@@ -326,5 +351,6 @@ automatically; the web page's meta line shows `links 2`.
 
 ## 12. Security notes
 
-- `mosquitto.conf` allows **anonymous** connections: LAN/dev use only. For anything shared, add `password_file` and `allow_anonymous false`.
+- `mosquitto.conf` allows **anonymous** connections: LAN/dev use only. For anything shared, add `password_file` and `allow_anonymous false` (the portable kit's README repeats this before any wider exposure).
+- Dev firewall rules (`scripts/firewall-rules.ps1`) are scoped to `-RemoteAddress LocalSubnet -Profile Private`: same-subnet devices only, inactive on Public-marked networks.
 - WiFi credentials live in `config.h` - never commit real ones; keep a private copy or inject them via your build system.
