@@ -38,15 +38,35 @@ def _env_float_opt(name: str, default: float) -> float | None:
         return default
 
 
+# Legacy baseline topic (the single-topic contract before multi-ESP32).
+LEGACY_DEFAULT_TOPIC = "esp32/csi/raw"
+
+
+def _topic_patterns_from_env() -> tuple:
+    """Subscription patterns honoring the baseline MQTT_TOPIC contract
+    (review findings R1-002 / R2-MqttTopicEnvSilentlyDead / R3-002).
+
+    An explicit MQTT_TOPIC override replaces the whole subscription list
+    with that single topic/pattern - exactly what the baseline did - while
+    an unset, empty or legacy-default value expands to the multi-link
+    patterns (per-device wildcard + legacy flat topic, so un-reflashed old
+    firmware keeps working). The CLI --topic flag still wins over the env.
+    """
+    raw = os.environ.get("MQTT_TOPIC")
+    if raw is None or raw.strip() == "" or raw == LEGACY_DEFAULT_TOPIC:
+        return ("esp32/+/csi/raw", LEGACY_DEFAULT_TOPIC)
+    return (raw,)
+
+
 @dataclass(frozen=True)
 class Config:
     # MQTT
     mqtt_host: str = os.environ.get("MQTT_HOST", "localhost")
     mqtt_port: int = _env_int("MQTT_PORT", 1883)
-    topic_raw: str = os.environ.get("MQTT_TOPIC", "esp32/csi/raw")
-    # Subscription patterns for multi-ESP32 links: per-device wildcard plus
-    # the legacy flat topic (old firmware keeps working un-reflashed).
-    topic_patterns: tuple = ("esp32/+/csi/raw", "esp32/csi/raw")
+    topic_raw: str = os.environ.get("MQTT_TOPIC", LEGACY_DEFAULT_TOPIC)
+    # Subscription patterns for multi-ESP32 links, derived from MQTT_TOPIC
+    # (see _topic_patterns_from_env): env override honored, CLI --topic wins.
+    topic_patterns: tuple = field(default_factory=_topic_patterns_from_env)
 
     # Sampling / processing
     sample_rate_hz: float = _env_float("CSI_FS", 10.0)

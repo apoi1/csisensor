@@ -33,6 +33,22 @@ def test_ranging_can_be_disabled_via_empty_or_none(monkeypatch):
     assert Config().ref_distance_m is None
 
 
+def test_mqtt_topic_env_restores_baseline_override(monkeypatch):
+    # R1-002 / R2-MqttTopicEnvSilentlyDead / R3-002: MQTT_TOPIC is the
+    # baseline configuration contract. An explicit override must replace
+    # the whole subscription list (single topic/pattern); unset or the
+    # legacy default value expands to the multi-link patterns (per-device
+    # wildcard + legacy flat topic, so old firmware keeps working).
+    monkeypatch.delenv("MQTT_TOPIC", raising=False)
+    assert Config().topic_patterns == ("esp32/+/csi/raw", "esp32/csi/raw")
+    monkeypatch.setenv("MQTT_TOPIC", "esp32/csi/raw")   # legacy default value
+    assert Config().topic_patterns == ("esp32/+/csi/raw", "esp32/csi/raw")
+    monkeypatch.setenv("MQTT_TOPIC", "")                 # empty = unset
+    assert Config().topic_patterns == ("esp32/+/csi/raw", "esp32/csi/raw")
+    monkeypatch.setenv("MQTT_TOPIC", "lab/room1/csi")
+    assert Config().topic_patterns == ("lab/room1/csi",)
+
+
 def test_disabled_ranging_config_yields_no_distance(monkeypatch):
     # End to end: Config -> MotionAnalyzer with the disabled state must
     # report no distance (None), not an uncalibrated guess.

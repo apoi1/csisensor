@@ -107,15 +107,17 @@ class LinkManager:
         self._primary: str | None = None  # heart-winning link (panels follow it)
         self._evictions = 0
         self._lock = threading.Lock()   # guards _links/_last_seen/_primary
-                                        # across ingest and consumer threads
-                                        # (review finding R3-LinkManagerThreadSafety)
+                                        # across ingest and consumer threads;
+                                        # every public accessor takes it
+                                        # (review findings R3-LinkManager-
+                                        # ThreadSafety, R1-004, R3-003)
         self.sub = subscriber if subscriber is not None else \
             MultiLinkSubscriber(cfg.mqtt_host, cfg.mqtt_port,
                                 getattr(cfg, "topic_patterns",
                                         DEFAULT_TOPIC_PATTERNS))
 
     # ------------------------------------------------------------------ links
-    def _pipelines(self, link_id: str):
+    def _pipelines(self, link_id: str, touch: bool = True):
         pair = self._links.get(link_id)
         if pair is None:
             if len(self._links) >= MAX_LINKS:
@@ -130,6 +132,12 @@ class LinkManager:
                 self._links.pop(stalest, None)
                 self._last_seen.pop(stalest, None)
                 self._evictions += 1
+                if self._primary == stalest:
+                    # Never leave a dangling primary id: the next read would
+                    # re-create the evicted link as an empty ghost pipeline,
+                    # churning live links out of the registry
+                    # (review finding R3-004).
+                    self._primary = None
             pair = (
                 VitalsProcessor(fs=self.cfg.sample_rate_hz,
                                 window_s=self.cfg.window_seconds,
@@ -145,11 +153,27 @@ class LinkManager:
                                path_loss_exponent=self.cfg.path_loss_exponent),
             )
             self._links[link_id] = pair
-        self._last_seen[link_id] = time.time()
+            self._last_seen[link_id] = time.time()   # fresh on registration
+        elif touch:
+            # Staleness tracks INGEST time only. Read accessors (fill/
+            # capacity/current_matrix/current_window via _primary_proc,
+            # touch=False) must never refresh it: a polled silent link has
+            # to expire after LINK_STALE_S instead of keeping its frozen
+            # full-window estimate winning fusion forever (review
+            # findings R3-001 / R4-StalePrimaryNeverExpires).
+            self._last_seen[link_id] = time.time()
         return pair
 
-    def link_ids(self):
+    def _link_ids_locked(self):
+        """Sorted registry view; caller must hold self._lock. Used by
+        _primary_proc, which runs with the lock already held - taking the
+        public locked link_ids() there would deadlock (review finding
+        R2-LinkIdsLockContractTrap)."""
         return sorted(self._links.keys())
+
+    def link_ids(self):
+        with self._lock:
+            return self._link_ids_locked()
 
     def n_links(self) -> int:
         with self._lock:
@@ -173,7 +197,8 @@ class LinkManager:
 
     def evictions(self) -> int:
         """How many stale links were evicted from the full registry."""
-        return self._evictions
+        with self._lock:
+            return self._evictions
 
     # ------------------------------------------------------------------ input
     def ingest(self, link_id: str, packets) -> int:
@@ -263,6 +288,7 @@ class LinkManager:
         ready = []
         with self._lock:
             self._prune_stale()
+            primary_id = self._primary   # captured under the lock (R1-004)
             for link_id in self._live_links():
                 est = self._links[link_id][1].estimate()
                 if est is not None:
@@ -280,7 +306,7 @@ class LinkManager:
 
         primary = None
         for link_id, est in ready:
-            if link_id == self._primary:
+            if link_id == primary_id:
                 primary = est
                 break
         if primary is None:
@@ -309,5 +335,5 @@ class LinkManager:
     def _primary_proc(self):
         if not self._links:
             return None
-        link_id = self._primary or self.link_ids()[0]
-        return self._pipelines(link_id)[0]
+        link_id = self._primary or self._link_ids_locked()[0]
+        return self._pipelines(link_id, touch=False)[0]

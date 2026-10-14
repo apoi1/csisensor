@@ -215,3 +215,91 @@ def test_real_parser_packets_flow_end_to_end():
     assert links.drain_and_feed() == 1
     assert links.n_links() == 1
     assert links._links["real"][0].fill() == 1
+
+
+def test_polled_primary_still_expires():
+    """R3-001 / R4-StalePrimaryNeverExpires: the shipped consumers poll
+    fill()/capacity()/current_matrix()/current_window() (GUI at 5 Hz, web
+    viewer ~1 Hz). Those read paths must NOT refresh staleness: a silent
+    primary has to expire after LINK_STALE_S exactly like any other link
+    instead of keeping its frozen full-window estimate winning fusion
+    forever. The older stale tests missed this because they edited
+    _last_seen directly and never exercised the polled accessors."""
+    links = make_manager()
+    links.ingest("primary-link", synth_packets(heart_amp=3.0, seed=1))
+    est = links.estimate()
+    assert est is not None
+    assert links.primary_link() == "primary-link"
+    links.ingest("backup-link", synth_packets(heart_amp=3.0, seed=2))
+    # The primary goes silent; the consumers keep polling it hard.
+    links._last_seen["primary-link"] -= (LINK_STALE_S + 5.0)
+    for _ in range(5):
+        assert links.fill() > 0
+        assert links.capacity() > 0
+        assert links.current_window() is not None
+        assert links.current_matrix() is not None
+    # Despite the polling, the fusion pass must prune the silent link and
+    # the live backup takes over the primary.
+    est = links.estimate()
+    assert est is not None
+    assert "primary-link" not in links.link_ids()
+    assert links.primary_link() == "backup-link"
+
+
+def test_evicted_primary_is_not_resurrected():
+    """R3-004: LRU eviction of the primary link must clear _primary so the
+    dangling id cannot re-create an empty ghost pipeline on the next read
+    (churning live links out of the registry and flipping the status bar
+    to 0%)."""
+    links = make_manager()
+    links.ingest("primary-link", synth_packets(heart_amp=3.0, seed=1))
+    links.estimate()
+    assert links.primary_link() == "primary-link"
+    links._last_seen["primary-link"] -= 3600.0    # becomes the stalest link
+    pkts = synth_packets()[:5]
+    for i in range(MAX_LINKS):
+        links.ingest(f"filler-{i:02d}", pkts)      # registry full -> LRU evicts
+    assert "primary-link" not in links.link_ids()
+    assert links.primary_link() is None           # no dangling primary id
+    assert links.fill() >= 0                       # reads stay safe (no ghost)
+
+
+def test_concurrent_reads_do_not_race_with_ingest():
+    """R1-004 / R2-LinkIdsLockContractTrap / R3-003: link_ids() and
+    evictions() read shared registry state and must take the lock like
+    their siblings - while _primary_proc(), which already holds the lock,
+    uses an internal locked helper (a naive lock on link_ids() would
+    deadlock fill()/capacity()). Stress smoke: concurrent reader threads
+    must never observe a torn registry (RuntimeError: dictionary changed
+    size during iteration)."""
+    import threading
+
+    links = make_manager()
+    pkts = synth_packets()[:5]
+    links.ingest("seed-link", pkts)
+    errors = []
+    stop = threading.Event()
+
+    def reader():
+        try:
+            while not stop.is_set():
+                links.link_ids()
+                links.evictions()
+                links.fill()
+                links.capacity()
+        except Exception as exc:  # only reachable on a regression
+            errors.append(exc)
+
+    threads = [threading.Thread(target=reader) for _ in range(2)]
+    for t in threads:
+        t.start()
+    try:
+        for i in range(200):
+            links.ingest(f"churn-{i % MAX_LINKS:02d}", pkts)
+            links.estimate()
+    finally:
+        stop.set()
+        for t in threads:
+            t.join(timeout=5.0)
+    assert not errors
+    assert not any(t.is_alive() for t in threads)

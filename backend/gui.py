@@ -162,6 +162,13 @@ class VitalsWindow(QMainWindow):
         self.line_raw.set_data(t, mean)
         self.ax_raw.relim()
         self.ax_raw.autoscale_view(scalex=False)   # x is pinned: y-only
+        # Always schedule a repaint: during the window-fill phase the
+        # estimate is None and _apply_estimate returns before its own
+        # draw_idle, so without this the raw trace stays frozen for the
+        # first window_seconds of every session (review findings
+        # R2-RedrawRawNoLongerDraws / R3-005 / R4-FillPhaseCanvasFrozen).
+        # draw_idle calls within one tick coalesce into a single repaint.
+        self.canvas.draw_idle()
 
     def _apply_estimate(self, est):
         if est is None:
