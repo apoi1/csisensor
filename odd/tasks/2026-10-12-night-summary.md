@@ -18,12 +18,12 @@ Cadena física verificada de punta a punta con evidencia en vivo:
    con el fix `a1f6950` (`CONFIG_ESP_WIFI_CSI_ENABLED=y` en
    `sdkconfig.defaults`).
 3. **La cadena completa fluye** — placa → Wi-Fi (SSID 2.4 GHz) → MQTT al
-   broker (`mqtt://192.168.20.30:1883`) → backend. **Prueba viviente**: el
+   broker (`mqtt://192.168.x.x:1883`) → backend. **Prueba viviente**: el
    primer paquete real de la placa crasheó la GUI (bug `t_s`/`t_us`,
    corregido en `a809832`) — ese crash ES la prueba de que la placa
    publicaba y el backend recibía. Suite 46/46 con test de regresión que
    reproduce el camino exacto.
-4. **Identidad del nodo**: link `59c0a0` (MAC 28:84:85:59:c0:a0).
+4. **Identidad del nodo**: link `59c0a0` (MAC omitida por higiene del repo — ver la etiqueta de la placa).
 
 Falta (cosmético, mañana): confirmación visual final de las estimativas en
 pantalla tras el fix `a809832` (la GUI crasheaba al primer paquete; con el

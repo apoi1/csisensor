@@ -7,6 +7,9 @@
 # them correctly scoped:
 #   - TCP 1883 inbound: Mosquitto broker (the ESP32 publishes from the LAN)
 #   - TCP 8080 inbound: web viewer (phones on the LAN)
+#   - Scoped to LocalSubnet + Private profile: the boards and phones that
+#     need these ports all sit on the same subnet, and Private keeps the
+#     rules quiet on networks Windows marks Public (finding R1-003).
 #
 # Why a script: pasting the long one-line New-NetFirewallRule commands into
 # the console can wrap/split mid-command, which silently creates an
@@ -28,8 +31,14 @@ $targets = @(
 foreach ($t in $targets) {
     Get-NetFirewallRule -DisplayName $t.DisplayName -ErrorAction SilentlyContinue |
         Remove-NetFirewallRule
+    # LocalSubnet covers both the ESP32 publisher and the LAN phones
+    # without opening the ports to routed/remote traffic (R1-003); the
+    # Private profile means the network must be marked Private in
+    # Windows (Settings > Network > Network profile) or the rules stay
+    # inactive - which is the safe default on unknown Wi-Fi.
     New-NetFirewallRule -DisplayName $t.DisplayName `
-        -Direction Inbound -Protocol TCP -LocalPort $t.Port -Action Allow |
+        -Direction Inbound -Protocol TCP -LocalPort $t.Port -Action Allow `
+        -RemoteAddress LocalSubnet -Profile Private |
         Out-Null
     Write-Host ("OK: {0} (inbound TCP {1} allow)" -f $t.DisplayName, $t.Port)
 }

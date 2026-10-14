@@ -446,7 +446,7 @@ t_us,rssi,n,seq,a0,a1,...,aN
 ### 5.3 Datasets
 
 - **No se usa ningún dataset externo.** La validación es de dos niveles:
-  1. **Unit tests** (`backend/tests/`): señales CSI sintéticas con verdad conocida (60 bpm / 15 resp·min⁻¹) → 45/45 pasando; el estimador debe recuperar la frecuencia inyectada ±5 bpm y ±3 /min, y una señal plana debe dar `"-"`. La suite cubre: estimador de signos vitales, parser de paquetes, analizador de presencia/movimiento, fusionador multi-ESP32 (`link_manager`: ruteo por tópico, fusión por banda con mejor SNR, agregado conservador de presencia, expiración de enlaces), config por env (incluido el sentinel `none`), endurecimiento de entradas del procesador, y el pipeline del web viewer.
+  1. **Unit tests** (`backend/tests/`): señales CSI sintéticas con verdad conocida (60 bpm / 15 resp·min⁻¹) → 50/50 pasando; el estimador debe recuperar la frecuencia inyectada ±5 bpm y ±3 /min, y una señal plana debe dar `"-"`. La suite cubre: estimador de signos vitales, parser de paquetes, analizador de presencia/movimiento, fusionador multi-ESP32 (`link_manager`: ruteo por tópico, fusión por banda con mejor SNR, agregado conservador de presencia, expiración de enlaces, incluida la del primary sondeado por los lectores), config por env (incluido el sentinel `none` y el override de `MQTT_TOPIC`), endurecimiento de entradas del procesador, y el pipeline del web viewer.
   2. **Simulador en vivo** (`scripts/simulate_esp32.py`) → GUI.
 - Para validación futura contra datos de terceros, los datasets públicos conocidos de WiFi sensing son: **UT-HAR** (reconocimiento de actividad, Yousefi et al. 2017), **NTU-Fi** (HAR y lenguaje de señas), **SignFi**, **Wiar** y **FallAF**. Ninguno está orientado a signos vitales (los papers de esa área usan capturas propias de laboratorio), así que la estrategia de este proyecto es generar los datos con el propio ESP32 y el simulador.
 - Lecturas académicas del área: §3.7.
@@ -463,4 +463,4 @@ t_us,rssi,n,seq,a0,a1,...,aN
 
 ---
 
-*Mantener este archivo sincronizado con el stack real. Última revisión: alineado con el firmware ESP-IDF v5.3.x y el backend verificado (45/45 tests, incluye web viewer).*
+*Mantener este archivo sincronizado con el stack real. Última revisión: alineado con el firmware ESP-IDF v5.3.x y el backend verificado (50/50 tests, incluye web viewer).*

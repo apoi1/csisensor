@@ -5,6 +5,41 @@ Format based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (2026-10-14) — native-review correction cycle (lineage `review-7d8e6420d3b9ab94`)
+- **`MQTT_TOPIC` honored again** (findings R1-002 / R2-MqttTopicEnvSilentlyDead
+  / R3-002): `Config.topic_patterns` now derives from the `MQTT_TOPIC` env
+  var — an explicit override replaces the whole subscription list (baseline
+  contract), while unset/legacy-default expands to the multi-link patterns;
+  the CLI `--topic` flag still wins. Previously the env value was read but
+  silently ignored after the multi-link rewiring.
+- **Stale-link expiry now works for the primary link** (R3-001 /
+  R4-StalePrimaryNeverExpires): `_pipelines()` refreshes `_last_seen` on
+  ingest and registration only — the polled read accessors
+  (fill/capacity/current_matrix/current_window) no longer keep a silent
+  primary alive: a dead primary expires after `LINK_STALE_S` and fusion
+  fails over to live links.
+- **GUI paints during the window-fill phase** (R2-RedrawRawNoLongerDraws /
+  R3-005 / R4-FillPhaseCanvasFrozen): `_redraw_raw()` schedules its own
+  `draw_idle()`, so the raw trace repaints from the first packet instead
+  of freezing for ~window_seconds until the first full estimate.
+- **Registry lock coverage completed** (R1-004 / R2-LinkIdsLockContractTrap
+  / R3-003): `link_ids()` and `evictions()` take the lock; `_primary_proc()`
+  uses an internal locked helper (a naive lock would deadlock
+  fill()/capacity()); `motion_estimate()` captures `_primary` under the
+  lock instead of reading it after release.
+- **LRU eviction clears `_primary`** (R3-004): evicting the primary link can
+  no longer leave a dangling id that resurrects it as an empty ghost
+  pipeline on the next read.
+- **Deployment hygiene** (R1-003 / R1-005 / R2-FlashSize4MBUnexplained /
+  R3-006): dev firewall rules are scoped to `-RemoteAddress LocalSubnet
+  -Profile Private`; the portable kit README carries the
+  auth-before-exposure note; the kit's LAN-IP detection now falls back to
+  10.x/172.x with an explicit warning instead of printing an empty URL;
+  `flash-board.ps1` exposes `-FlashSize` (default 4MB, matching
+  `sdkconfig.defaults`; the board carries 16 MB per the bring-up notes —
+  raise both together); LAN IP and board MAC scrubbed from the task notes.
+  Suite: 50/50.
+
 ## [0.1.0] - 2026-10-12
 
 ### Added (2026-10-12)

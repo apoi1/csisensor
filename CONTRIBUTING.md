@@ -16,7 +16,7 @@ keep experimental claims out of user-facing copy.
 
 ```console
 cd backend
-python -m pytest tests -q          # full suite must pass (currently 45 tests)
+python -m pytest tests -q          # full suite must pass (currently 50 tests)
 python -m py_compile <touched>.py
 ```
 

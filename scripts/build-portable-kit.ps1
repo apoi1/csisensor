@@ -79,7 +79,8 @@ title CSI broker
 start "CSI broker" "%~dp0mosquitto\mosquitto.exe" -c "%~dp0mosquitto\mosquitto.conf"
 timeout /t 2 /nobreak >nul
 start "CSI viewer" "%~dp0csi-web-viewer.exe" --broker localhost --host 0.0.0.0 --port 8080
-for /f "tokens=2 delims=:" %%a in ('netsh interface ip show address ^| findstr /c:"192.168." ^| findstr /v /c:"192.168.56." /c:"192.168.192."') do set LIP=%%a
+for /f "tokens=2 delims=:" %%a in ('netsh interface ip show address ^| findstr /r /c:"192\.168\." /c:"10\." /c:"172\." ^| findstr /v /c:"192.168.56." /c:"192.168.192."') do set LIP=%%a
+if "%LIP%"=="" echo      (no LAN IP auto-detected - run ipconfig and use this PC's IPv4 address)
 echo.
 echo  System running. Open on any phone on the SAME Wi-Fi:
 echo      http://%LIP:~1%:8080
@@ -101,6 +102,13 @@ BOARD:    the ESP32 keeps publishing to the broker address flashed in its
           edit config.h, idf.py build (WSL), then scripts/flash-board.ps1.
 NO PYTHON, NO DOCKER required on the target PC.
 
+SECURITY (read before exposing beyond your desk):
+  The bundled broker accepts anonymous MQTT from the LAN. This kit is
+  for a trusted lab Wi-Fi only. Before any wider exposure, enable
+  authentication in mosquitto/mosquitto.conf (DEPLOYMENT.md §12:
+  "auth before any exposure") and scope the dev firewall rules
+  (scripts/firewall-rules.ps1: LocalSubnet + Private profile).
+
 Contents:
   csi-web-viewer.exe  LAN web viewer (aiohttp, self-contained)
   mosquitto/          Eclipse Mosquitto broker (official binaries)
@@ -108,8 +116,17 @@ Contents:
 '@ | Set-Content -Path (Join-Path $KitDir "README.txt") -Encoding ASCII
 
 $ip = (Get-NetIPAddress -AddressFamily IPv4 |
-    Where-Object { $_.IPAddress -like "192.168.*" -and $_.IPAddress -notlike "192.168.56.*" -and $_.IPAddress -notlike "192.168.192.*" } |
+    Where-Object { ($_.IPAddress -like "192.168.*" -or $_.IPAddress -like "10.*" -or $_.IPAddress -like "172.*") -and
+                   $_.IPAddress -notlike "192.168.56.*" -and $_.IPAddress -notlike "192.168.192.*" -and
+                   $_.IPAddress -notlike "169.254.*" } |
     Select-Object -First 1).IPAddress
+if (-not $ip) {
+    # R3-006: never print an empty URL - tell the builder what happened.
+    Write-Warning "No typical LAN IPv4 found (192.168.*/10.*/172.*). Run ipconfig and hand out the IPv4 address manually."
+    $ip = "<run ipconfig>"
+} elseif ($ip -notlike "192.168.*") {
+    Write-Warning "LAN IP $ip is not 192.168.* - double-check it with ipconfig before handing out the URL."
+}
 Write-Host ""
 Write-Host "Kit ready: $KitDir"
 Write-Host "This PC's LAN IP: $ip  (phones: http://$ip`:8080)"

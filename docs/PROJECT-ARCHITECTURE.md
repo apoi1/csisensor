@@ -23,7 +23,7 @@ Pipeline de seguimiento vital (pulso/respiración) mediante WiFi CSI. Utiliza el
 
 ## Estado de implementación
 - [x] Firmware nativo con API ESP-IDF v5.
-- [x] Backend de procesamiento con FFT (suite 45/45: estimador, parser, analizador de presencia/movimiento, link manager multi-ESP32, config y web viewer).
+- [x] Backend de procesamiento con FFT (suite 50/50: estimador, parser, analizador de presencia/movimiento, link manager multi-ESP32, config y web viewer).
 - [x] GUI en tiempo real con 3 plots y etiquetas dinámicas.
 - [x] Script simulador para dry-run.
 - [x] Guía de deployment (DEPLOYMENT.md) completa.

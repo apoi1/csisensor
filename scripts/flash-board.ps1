@@ -22,7 +22,14 @@
 #   - The firmware built (idf.py build in WSL produces src/esp32/build/*.bin)
 
 param(
-    [string]$Port = ""
+    [string]$Port = "",
+    # Flash size must match CONFIG_ESPTOOLPY_FLASHSIZE_* in
+    # src/esp32/sdkconfig.defaults. Default 4MB mirrors the current
+    # firmware build; this board carries 16 MB (see the bring-up notes in
+    # odd/tasks/2026-10-12-night-summary.md) — raise BOTH this value and
+    # sdkconfig.defaults together to actually use it (finding
+    # R2-FlashSize4MBUnexplained).
+    [string]$FlashSize = "4MB"
 )
 
 $ErrorActionPreference = "Stop"
@@ -70,9 +77,9 @@ if (-not (Test-Path $appBin)) {
     exit 1
 }
 
-Write-Host "Flashing sensorproject firmware on $Port (reset mode: $resetMode) (build: $build)"
+Write-Host "Flashing sensorproject firmware on $Port (reset mode: $resetMode) (build: $build, flash-size: $FlashSize)"
 & $py -m esptool --chip esp32s3 -p $Port -b 460800 --before $resetMode --after hard-reset write-flash `
-    --flash-mode dio --flash-freq 80m --flash-size 4MB `
+    --flash-mode dio --flash-freq 80m --flash-size $FlashSize `
     0x0 (Join-Path $build "bootloader/bootloader.bin") `
     0x8000 (Join-Path $build "partition_table/partition-table.bin") `
     0x10000 $appBin
