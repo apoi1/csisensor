@@ -47,6 +47,21 @@ static const char *TAG = "csi_main";
 
 #define SAMPLE_QUEUE_DEPTH 32
 
+/* NVS namespace for runtime-provisioned credentials: the binary is
+ * credential-free and shareable; each deployment loads its own values
+ * over USB serial once — no rebuild to change networks. Falls back to
+ * the config.h #defines when NVS is empty, so a fresh flash works out
+ * of the box on the compiled-in network and is ready for provisioning
+ * anytime. */
+#define NVS_CREDS_NAMESPACE "wifi_creds"
+#define PROVISION_LINE_MAX  256
+
+/* Runtime credentials (NVS-provisioned > compiled-in fallback). */
+static char s_ssid[33];
+static char s_pass[65];
+static char s_broker_uri[160];
+static bool s_using_nvs = false;
+
 typedef struct {
     uint64_t t_us;                     /* device timestamp (µs)            */
     int8_t   rssi;                     /* dBm                               */
@@ -186,14 +201,14 @@ static void mqtt_start(void)
         return;
     }
     esp_mqtt_client_config_t cfg = {};
-    cfg.broker.address.uri = MQTT_BROKER_URI;
+    cfg.broker.address.uri = s_broker_uri;
     cfg.session.keepalive   = 30;
 
     s_mqtt = esp_mqtt_client_init(&cfg);
     assert(s_mqtt != NULL);
     esp_mqtt_client_register_event(s_mqtt, MQTT_EVENT_ANY, mqtt_event_cb, NULL);
     esp_mqtt_client_start(s_mqtt);
-    ESP_LOGI(TAG, "MQTT client started → %s", MQTT_BROKER_URI);
+    ESP_LOGI(TAG, "MQTT client started, broker=%s", s_broker_uri);
 }
 
 #if USE_TRAFFIC_PING
@@ -254,6 +269,87 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
     }
 }
 
+/* ================================================= provisioning ======== */
+
+static void provision_save(const char *key, const char *value)
+{
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_CREDS_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        printf("PROVISION:ERR nvs_open=%d\n", (int)err);
+        return;
+    }
+    err = nvs_set_str(h, key, value);
+    if (err == ESP_OK) {
+        err = nvs_commit(h);
+    }
+    nvs_close(h);
+    if (err == ESP_OK) {
+        printf("PROVISION:OK %s saved\n", key);
+    } else {
+        printf("PROVISION:ERR %s=%d\n", key, (int)err);
+    }
+}
+
+/* Console task: listens on UART0 (the USB serial bridge) for provisioning
+ * commands. Runs at the lowest priority so it never competes with CSI.
+ * Protocol (one command per line, LF-terminated):
+ *   PROVISION:SSID=<value>     save WiFi SSID to NVS
+ *   PROVISION:PASS=<value>     save WiFi password to NVS
+ *   PROVISION:BROKER=<value>   save MQTT broker URI to NVS
+ *   PROVISION:SAVE             commit + reboot (applies immediately)
+ *   PROVISION:STATUS           print current source + values (no pass)
+ *   PROVISION:CLEAR            erase NVS credentials + reboot (fall back
+ *                              to the compiled-in #defines)
+ *
+ * You can also type these by hand over any serial terminal (screen,
+ * idf.py monitor, PuTTY) — the protocol is human-readable on purpose.
+ */
+static void provisioning_task(void *arg)
+{
+    (void)arg;
+    char line[PROVISION_LINE_MAX];
+    while (true) {
+        if (fgets(line, sizeof(line), stdin) == NULL) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+        line[strcspn(line, "\r\n")] = '\0';
+        if (line[0] == '\0') {
+            continue;
+        }
+
+        if (strncmp(line, "PROVISION:SSID=", 15) == 0) {
+            provision_save("ssid", line + 15);
+        } else if (strncmp(line, "PROVISION:PASS=", 15) == 0) {
+            provision_save("pass", line + 15);
+        } else if (strncmp(line, "PROVISION:BROKER=", 17) == 0) {
+            provision_save("broker", line + 17);
+        } else if (strcmp(line, "PROVISION:SAVE") == 0) {
+            printf("PROVISION:OK saved, rebooting\n");
+            fflush(stdout);
+            vTaskDelay(pdMS_TO_TICKS(200));
+            esp_restart();
+        } else if (strcmp(line, "PROVISION:STATUS") == 0) {
+            printf("PROVISION:source=%s ssid=%s broker=%s\n",
+                   s_using_nvs ? "NVS" : "compiled-in-fallback",
+                   s_ssid, s_broker_uri);
+            fflush(stdout);
+        } else if (strcmp(line, "PROVISION:CLEAR") == 0) {
+            nvs_handle_t h;
+            if (nvs_open(NVS_CREDS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+                nvs_erase_all(h);
+                nvs_commit(h);
+                nvs_close(h);
+            }
+            printf("PROVISION:OK cleared, rebooting\n");
+            fflush(stdout);
+            vTaskDelay(pdMS_TO_TICKS(200));
+            esp_restart();
+        }
+    }
+}
+
 /* ========================================================== app_main === */
 
 extern "C" void app_main(void)
@@ -263,12 +359,36 @@ extern "C" void app_main(void)
     s_sample_queue = xQueueCreate(SAMPLE_QUEUE_DEPTH, sizeof(csi_sample_t));
     assert(s_sample_queue != NULL);
 
-    /* NVS (required by WiFi driver) */
+    /* NVS (required by WiFi driver, also holds provisioned credentials) */
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ESP_ERROR_CHECK(nvs_flash_init());
     }
+
+    /* Read credentials: NVS first (provisioned over serial), compiled-in
+     * fallback. A fresh flash with empty NVS works on the config.h network
+     * out of the box and is ready for PROVISION:* commands anytime. */
+    strlcpy(s_ssid, WIFI_SSID, sizeof(s_ssid));
+    strlcpy(s_pass, WIFI_PASS, sizeof(s_pass));
+    strlcpy(s_broker_uri, MQTT_BROKER_URI, sizeof(s_broker_uri));
+    {
+        nvs_handle_t h;
+        if (nvs_open(NVS_CREDS_NAMESPACE, NVS_READONLY, &h) == ESP_OK) {
+            size_t len = sizeof(s_ssid);
+            if (nvs_get_str(h, "ssid", s_ssid, &len) == ESP_OK) {
+                s_using_nvs = true;
+            }
+            len = sizeof(s_pass);
+            nvs_get_str(h, "pass", s_pass, &len);
+            len = sizeof(s_broker_uri);
+            nvs_get_str(h, "broker", s_broker_uri, &len);
+            nvs_close(h);
+        }
+    }
+    ESP_LOGI(TAG, "credentials source: %s (ssid=%s)",
+             s_using_nvs ? "NVS (provisioned)" : "compiled-in fallback",
+             s_ssid);
 
     /* Network + WiFi STA */
     esp_netif_init();
@@ -284,8 +404,8 @@ extern "C" void app_main(void)
                                                wifi_event_handler, NULL));
 
     wifi_config_t sta_cfg = {};
-    strlcpy((char *)sta_cfg.sta.ssid, WIFI_SSID, sizeof(sta_cfg.sta.ssid));
-    strlcpy((char *)sta_cfg.sta.password, WIFI_PASS, sizeof(sta_cfg.sta.password));
+    strlcpy((char *)sta_cfg.sta.ssid, s_ssid, sizeof(sta_cfg.sta.ssid));
+    strlcpy((char *)sta_cfg.sta.password, s_pass, sizeof(sta_cfg.sta.password));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
@@ -305,4 +425,5 @@ extern "C" void app_main(void)
 
     xTaskCreate(publisher_task, "csi_pub",   4096, NULL, 5, NULL);
     xTaskCreate(stats_task,     "csi_stats", 2048, NULL, 4, NULL);
+    xTaskCreate(provisioning_task, "prov",  4096, NULL, 3, NULL);
 }

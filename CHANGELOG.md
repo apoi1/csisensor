@@ -6,6 +6,18 @@ Format based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added (2026-10-14)
+- **NVS runtime provisioning for the ESP32**: the firmware reads WiFi and
+  MQTT broker credentials from NVS at boot (falling back to the compiled-in
+  `config.h` #defines when NVS is empty), and a low-priority console task
+  listens on the USB serial port for human-readable provisioning commands
+  (`PROVISION:SSID=`, `PROVISION:PASS=`, `PROVISION:BROKER=`,
+  `PROVISION:SAVE`, `PROVISION:STATUS`, `PROVISION:CLEAR`). The companion
+  script `scripts/provision-esp32.py` (pyserial, auto-detects the port)
+  loads credentials in 30 seconds — no rebuild, no re-flash, no WSL
+  toolchain needed to change networks. After ONE flash of this firmware,
+  network changes are provision-only. The binary is credential-free and
+  shareable. `DEPLOYMENT.md` §5 now documents provisioning as Option A
+  (recommended) with the config.h fallback as Option B.
 - **docs/QUICKSTART-ZOMBIE.md**: the zombie-mode deployment guide — state-aware
   (what's already done and never needs repeating), the one-time actions from
   the recent fixes (scoped firewall re-run + Private profile, GUI restart,

@@ -114,7 +114,25 @@ sudo usermod -aG dialout $USER  # then close and reopen WSL
 
 ## 5. Configure the firmware
 
-Edit `src/esp32/main/config.h`:
+**Option A — runtime provisioning (recommended, no rebuild):** after the
+one-time NVS-capable firmware flash (§6), load credentials over USB serial:
+
+```bash
+# Linux / WSL / Fedora (auto-detects the serial port):
+python ../scripts/provision-esp32.py --ssid <SSID> --pass <PASS> --broker mqtt://<LAN-IP>:1883
+
+# Check current state:
+python ../scripts/provision-esp32.py --status
+
+# Clear NVS (fall back to compiled-in values):
+python ../scripts/provision-esp32.py --clear
+```
+
+30 seconds per network change — no `idf.py build`, no re-flash, no WSL.
+The binary is credential-free and shareable.
+
+**Option B — compiled-in fallback (the original way):** if you prefer the
+#defines (e.g. for a fixed deployment), edit `src/esp32/main/config.h`:
 
 | Define | Value |
 |---|---|
