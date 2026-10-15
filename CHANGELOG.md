@@ -6,6 +6,11 @@ Format based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added (2026-10-14)
+- **docs/QUICKSTART-ZOMBIE.md**: the zombie-mode deployment guide — state-aware
+  (what's already done and never needs repeating), the one-time actions from
+  the recent fixes (scoped firewall re-run + Private profile, GUI restart,
+  portable-kit rebuild), the 4-step daily bring-up, the from-scratch and
+  portable-kit paths, the common-failure quick table, and the docs index.
 - **docs/DATA-PIPELINE.md**: the end-to-end methodological framework — every
   stage from the RF input to the exact displayed pixel, with the precise
   math at each step (detrend/Hann/rfft/parabolic interpolation/SNR vs
