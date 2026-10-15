@@ -6,6 +6,17 @@ Format based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added (2026-10-14)
+- **docs/DATA-PIPELINE.md**: the end-to-end methodological framework — every
+  stage from the RF input to the exact displayed pixel, with the precise
+  math at each step (detrend/Hann/rfft/parabolic interpolation/SNR vs
+  median, Butterworth SOS zero-phase, motion RMS, log-distance ranging,
+  multi-link fusion), the specific technology that executes it
+  (ESP-IDF CSI API, lwIP ping, esp-mqtt, paho-mqtt, queue, numpy, scipy,
+  PyQt5, Matplotlib Qt5Agg, aiohttp), the design rationale for every
+  decision (why median not mean, why sosfiltfilt not a one-way filter, why
+  QoS 0, why draw_idle, why pinned axes, why viridis/magma), and the
+  final on-screen-element to exact-source mapping table. Every claim
+  verified against the source files.
 - **GUI physical-measures readout**: every value axis now carries its
   physical measure and unit (mean CSI amplitude, filtered amplitude,
   motion RMS in [a.u.]), the heatmap and spectrogram titles state their

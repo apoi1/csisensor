@@ -25,6 +25,7 @@ ESP32-S3 firmware (C++/ESP-IDF) ──MQTT──► Mosquitto (Docker) ◄──
 | `docs/` | Tools list and project notes |
 | `docs/SIGNAL-MODELING.md` | Signal model: physics, math, variable provenance, calibration, references |
 | `docs/HOW-IT-WORKS.md` | The system explained simply (physics to data cleaning to how to read every chart; in Spanish, for non-technical audiences) |
+| `docs/DATA-PIPELINE.md` | End-to-end methodological framework: every stage from RF input to displayed pixel, with the exact math, the specific technology at each step, and the design rationale (in Spanish) |
 | `odd/` | ODD feature tracking |
 
 ## Features
