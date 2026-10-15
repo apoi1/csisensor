@@ -24,6 +24,18 @@ ESP32-S3 ──(MQTT: esp32/csi/raw)──► Mosquitto (Docker Desktop, Windows
 - ESP32-S3 dev board with a USB cable (data-capable)
 - A **2.4 GHz** WiFi network (the ESP32-S3 does not see 5 GHz)
 
+> **WiFi is NOT internet.** The system needs a WiFi **access point**
+> (a router, a hotspot, anything that creates a local network) — it
+> does NOT need internet. The entire pipeline (ESP32 to MQTT to
+> backend to GUI to web viewer) runs on the local network: zero bytes
+> reach the WAN. If the venue has no WiFi, a phone hotspot works (it
+> creates a local network without spending mobile data — the phone's
+> radio acts as a mini router; connected devices talk to each other
+> locally). The ESP32 must join SOME WiFi network because WiFi CSI
+> measures the radio channel between the ESP32 and the access point;
+> without a radio link there is nothing to measure. For deployment
+> without Docker, see `docs/DEPLOYMENT-ALTERNATIVES.md`.
+
 ## 2. Broker (Mosquitto via Docker)
 
 From the repo root (WSL or PowerShell - Docker Desktop handles both):
