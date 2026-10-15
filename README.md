@@ -24,6 +24,7 @@ ESP32-S3 firmware (C++/ESP-IDF) ──MQTT──► Mosquitto (Docker) ◄──
 | `DEPLOYMENT.md` | **Step-by-step deployment guide (WSL + Windows)** |
 | `docs/` | Tools list and project notes |
 | `docs/SIGNAL-MODELING.md` | Signal model: physics, math, variable provenance, calibration, references |
+| `docs/HOW-IT-WORKS.md` | The system explained simply (physics to data cleaning to how to read every chart; in Spanish, for non-technical audiences) |
 | `odd/` | ODD feature tracking |
 
 ## Features

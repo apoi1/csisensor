@@ -75,9 +75,9 @@ class VitalsWindow(QMainWindow):
                                f"band {resp_lo:g}\u2013{resp_hi:g} Hz")
         self.ax_heart.set_title("Heart (filtered)  $x(t)$, "
                                 f"band {heart_lo:g}\u2013{heart_hi:g} Hz")
-        self.ax_heat.set_title(r"$|H_k|=\sqrt{I_k^2+Q_k^2}$")
+        self.ax_heat.set_title(r"$|H_k|=\sqrt{I_k^2+Q_k^2}$ in dB (per subcarrier)")
         self.ax_spec.set_title(
-            r"$X(\tau,f)=\sum_n x[n]\,w[n-\tau]\,e^{-j2\pi fn/N}$")
+            r"$X(\tau,f)=\sum_n x[n]\,w[n-\tau]\,e^{-j2\pi fn/N}$ [dB]")
         motion_lo, motion_hi = MOTION_BAND_HZ
         self.ax_motion.set_title(
             r"$M_\mathrm{rms}=\sqrt{\langle b^2(t)\rangle}$"
@@ -85,6 +85,13 @@ class VitalsWindow(QMainWindow):
         for ax in (self.ax_raw, self.ax_resp, self.ax_heart, self.ax_heat,
                    self.ax_spec, self.ax_motion):
             ax.set_xlabel("t [s]")
+        # Physical measure + unit on every value axis: what the reader is
+        # looking at, at a glance (2026-10-14 request; see the measures
+        # strip below the canvas and docs/HOW-IT-WORKS.md).
+        self.ax_raw.set_ylabel("mean CSI amplitude [a.u.]")
+        self.ax_resp.set_ylabel("filtered amplitude [a.u.]")
+        self.ax_heart.set_ylabel("filtered amplitude [a.u.]")
+        self.ax_motion.set_ylabel("motion RMS [a.u.]")
         # Fixed time axes: every window/wave series is expressed relative to
         # its own window start, so x is always [0, window_seconds]. Pinning
         # x lets autoscale_view run y-only (much cheaper per repaint).
@@ -99,6 +106,20 @@ class VitalsWindow(QMainWindow):
         self.ax_motion.axhline(self.cfg.moving_rms_threshold,
                                color="#c0392b", ls="--", lw=1)
         root.addWidget(self.canvas)
+        # Physical-measures strip: every quantity behind the panels, with
+        # unit and source, always visible (2026-10-14). Full explainer in
+        # docs/HOW-IT-WORKS.md.
+        self.lbl_measures = QLabel(
+            "Measures — \u0101(t): mean CSI amplitude [a.u.] (raw panel) \u00b7 "
+            "x(t): band-filtered amplitude [a.u.] (respiration 0.1\u20130.5 Hz, "
+            "heart 0.8\u20132.0 Hz) \u00b7 |H_k|: subcarrier amplitude [dB] "
+            "(heatmap) \u00b7 X(\u03c4,f): spectral power [dB] (spectrogram) \u00b7 "
+            "M_rms: motion-band RMS [a.u.] \u00b7 \u03c3_window: amplitude std "
+            "[a.u.] \u00b7 RSSI [dBm] \u00b7 link distance [m] \u00b7 SNR [dB] \u00b7 "
+            "f [Hz] \u00b7 t [s]. Explainer: docs/HOW-IT-WORKS.md")
+        self.lbl_measures.setWordWrap(True)
+        self.lbl_measures.setStyleSheet("color: #666; font-size: 11px;")
+        root.addWidget(self.lbl_measures)
         self.figure.tight_layout()
 
         central = QWidget()

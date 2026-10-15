@@ -5,6 +5,20 @@ Format based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (2026-10-14)
+- **GUI physical-measures readout**: every value axis now carries its
+  physical measure and unit (mean CSI amplitude, filtered amplitude,
+  motion RMS in [a.u.]), the heatmap and spectrogram titles state their
+  dB scale, and a persistent strip under the canvas lists every quantity
+  behind the panels (ā(t), x(t) bands, |H_k|, X(τ,f), M_rms, σ_window,
+  RSSI, link distance, SNR) with units and source panel.
+- **docs/HOW-IT-WORKS.md**: the "for-kids-but-technical" explainer — the
+  electromagnetic spectrum and multipath physics behind the ESP32, the
+  packet/OFDM/CSI measurement chain, the 9-step data-cleaning pipeline,
+  what each of the 6 charts measures (with units) and how to interpret
+  it, expected results and honest limits, plus three ready-made
+  sentences to explain the system to non-technical audiences.
+
 ### Fixed (2026-10-14) — native-review correction cycle (lineage `review-7d8e6420d3b9ab94`)
 - **`MQTT_TOPIC` honored again** (findings R1-002 / R2-MqttTopicEnvSilentlyDead
   / R3-002): `Config.topic_patterns` now derives from the `MQTT_TOPIC` env
