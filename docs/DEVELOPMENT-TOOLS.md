@@ -210,7 +210,7 @@ Elimina `C_k` (el DC del modelo de §3.2) y la deriva lenta del canal. Sin esto,
 #### Paso 3 — Ventana de Hann
 
 ```math
-w[n] = \tfrac{1}{2}\left(1 - \cos\frac{2\pi n}{N-1}\right), \quad n = 0,\dots,N-1
+w[n] = \frac{1}{2}\left(1 - \cos\frac{2\pi n}{N-1}\right), \quad n = 0,\dots,N-1
 ```
 
 | Variable | Valor | Origen |
@@ -222,7 +222,7 @@ Por qué: cortar la señal de punta a punta (ventana rectangular) equivale, en f
 #### Paso 4 — FFT (la DFT aplicada)
 
 ```math
-X[k] = \sum_n x[n]\,w[n]\,e^{-i2\pi kn/N} \quad |X[k]| = \sqrt{\operatorname{Re}^2 + \operatorname{Im}^2}
+X[k] = \sum_n x[n]\,w[n]\,e^{-i2\pi kn/N} \quad |X[k]| = \sqrt{\mathrm{Re}^2 + \mathrm{Im}^2}
 ```
 
 ```math
@@ -252,13 +252,13 @@ Truco: cerca del máximo, el lóbulo en escala logarítmica es casi una parábol
 ```
 
 ```math
-p(x) = ax^2 + bx + c \quad a = \tfrac{1}{2}(l_- - 2l_0 + l_+) \quad b = \tfrac{1}{2}(l_+ - l_-) \quad c = l_0
+p(x) = ax^2 + bx + c \quad a = \frac{1}{2}(l_- - 2l_0 + l_+) \quad b = \frac{1}{2}(l_+ - l_-) \quad c = l_0
 ```
 
 El vértice de una parábola está en `x* = −b/(2a)`, entonces:
 
 ```math
-\delta = -\frac{b}{2a} = \frac{\tfrac{1}{2}(l_- - l_+)}{l_- - 2l_0 + l_+} \quad f_\text{peak} = f[k^*] + \delta\cdot\Delta f
+\delta = -\frac{b}{2a} = \frac{\frac{1}{2}(l_- - l_+)}{l_- - 2l_0 + l_+} \quad f_\text{peak} = f[k^*] + \delta\cdot\Delta f
 ```
 
 | Variable | Qué es | Origen |

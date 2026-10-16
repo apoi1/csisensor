@@ -33,7 +33,7 @@ H_k = I_k + j Q_k
 The firmware keeps only the amplitude
 
 ```math
-a_k = \operatorname{round}\left(\sqrt{I_k^2 + Q_k^2}\right)
+a_k = \mathrm{round}\left(\sqrt{I_k^2 + Q_k^2}\right)
 ```
 
 with `|I_k|, |Q_k| ≤ 127` → `a_k ≤ ~180`, which fits a `uint8`. **Phase is discarded.** The timestamp is `t_us = esp_timer_get_time()` (µs since boot).
@@ -97,7 +97,7 @@ Indoor `n_pl ≈ 2.7–4.3`; `X_sigma` is shadowing (a person near the LOS path 
 **Sliding window.** `N = round(fs · T_w)` samples; defaults `fs = 10 Hz`, `T_w = 15 s` → `N = 150` rows × `K` subcarriers.
 
 ```math
-N = \operatorname{round}(f_s \cdot T_w)
+N = \mathrm{round}(f_s \cdot T_w)
 ```
 
 **Detrend.** Linear detrending (`scipy.signal.detrend`) removes DC/slow drift.
@@ -111,7 +111,7 @@ w[n] = 0.5 \left(1 - \cos\left(\frac{2 \pi n}{N - 1}\right)\right)
 The spectrum is
 
 ```math
-X = \left| \operatorname{rfft}(x \cdot w) \right|
+X = \left| \mathrm{rfft}(x \cdot w) \right|
 ```
 
 (`np.fft.rfft`). Quadratic interpolation on the log-spectrum, with `la = log(X[i-1]+eps)`, `lb = log(X[i]+eps)`, `lc = log(X[i+1]+eps)`:
@@ -145,7 +145,7 @@ The subcarrier with max `SNR_k` wins.
 - Motion band `0.5–3.0 Hz` Butterworth bandpass → `b[n]`:
 
 ```math
-M_{\mathrm{rms}} = \sqrt{\operatorname{mean}(b^2)}
+M_{\mathrm{rms}} = \sqrt{\mathrm{mean}(b^2)}
 ```
 
 - `MOVING` if `M_rms > 1.5` (gross body movement); otherwise `STILL` (person at rest, breathing modulation only).

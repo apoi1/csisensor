@@ -157,11 +157,11 @@ ventana corta → devuelve la señal detrended tal cual.
 **Presencia/movimiento** (`motion_analyzer.py`, verificado):
 
 ```math
-x = \text{media de amplitudes por paquete} \quad x_d = \operatorname{detrend}(x) \quad \sigma_\text{ventana} = \operatorname{std}(x_d)
+x = \text{media de amplitudes por paquete} \quad x_d = \mathrm{detrend}(x) \quad \sigma_\text{ventana} = \mathrm{std}(x_d)
 ```
 
 ```math
-\mathrm{RMS}_\text{mov} = \sqrt{\operatorname{mean}(\operatorname{sosfiltfilt}(\operatorname{butter}(\mathrm{ord},[0.5,3.0]),x_d)^2)} \quad \mathrm{ord} = \begin{cases}3 & n\ge 30\\2 & \text{si no}\end{cases}
+\mathrm{RMS}_\text{mov} = \sqrt{\mathrm{mean}(\mathrm{sosfiltfilt}(\mathrm{butter}(\mathrm{ord},[0.5,3.0]),x_d)^2)} \quad \mathrm{ord} = \begin{cases}3 & n\ge 30\\2 & \text{si no}\end{cases}
 ```
 
 ```math
