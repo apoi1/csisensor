@@ -16,7 +16,7 @@
 > respiración y de tu corazón. Nosotros medimos ese temblor.**
 
 Versión técnica: el ESP32 mide cómo llega cada subportadora de una señal
-WiFi (`|H_k|`, la **CSI** — *Channel State Information*) a ~10
+WiFi ($|H_k|$, la **CSI** — *Channel State Information*) a ~10
 mediciones por segundo. El pecho, al moverse milímetros, cambia los
 caminos de rebote de la señal (*multipath*) y eso modula la amplitud que
 el ESP32 recibe. Esa modulación ES la respiración y el latido.
@@ -99,7 +99,7 @@ chip entrega hasta 128 subportadoras (el S3 usa **~64** en la práctica,
 `K = csi_len/2`).
 
 Eso es la **CSI**: un vector de ~64 amplitudes por paquete,
-`a_k = |H_k|` — *el firmware descarta la fase* (un diseño honesto y
+$a_k = |H_k|$ — *el firmware descarta la fase* (un diseño honesto y
 documentado; ver `docs/SIGNAL-MODELING.md` §1). Cada subportadora es un
 "punto de vista" distinto del mismo canal: alguna mira el pecho mejor,
 otra está tapada por la heladera, otra solo ve ruido.
@@ -133,7 +133,7 @@ t_us, rssi, n, seq, a0, a1, a2, ... a(n-1)
 | `rssi` | potencia con la que llegó TODO el paquete | dBm |
 | `n` | cuántas subportadoras trae | — |
 | `seq` | número de secuencia del paquete | — |
-| `a0..a(n-1)` | amplitud de cada subportadora: `a_k = √(I²+Q²)` | adimensional ("a.u.") |
+| `a0..a(n-1)` | amplitud de cada subportadora: $a_k = \sqrt{I^2+Q^2}$ | adimensional ("a.u.") |
 
 **Unidades, de una vez** (las mismas que ahora ves en los ejes del GUI):
 las amplitudes CSI son **adimensionales** (un número que el chip
@@ -152,11 +152,11 @@ ENTRA un paquete → se descarta si tiene NaN/inf, timestamps que
 retroceden o cambio de ancho (n) a mitad de ventana → SALE solo lo
 íntegro. *POR QUÉ: una sola fila corrupta envenena la FFT.*
 
-**Paso 1 — Promediar las ~64 subportadoras: `ā(t) = (1/K)·Σ|H_k|`.**
+**Paso 1 — Promediar las ~64 subportadoras: $\bar{a}(t) = \frac{1}{K}\sum|H_k|$.**
 ENTRA la fila de 64 amplitudes → SALE el promedio (1 número por
 instante). *POR QUÉ: el pecho mueve todos los tonos juntos (coherente)
 pero el ruido de cada tono es independiente → el promedio conserva la
-respiración y degrada el ruido ~√64 = 8 veces.* Esa `ā(t)` es la **gráfica
+respiración y degrada el ruido $\sqrt{64} = 8$ veces.* Esa $\bar{a}(t)$ es la **gráfica
 cruda** del panel superior izquierdo.
 
 **Paso 2 — La ventana de 15 s.**
@@ -231,7 +231,7 @@ vas a ver cada escenario sin hardware.
 
 ### Izquierda — las 3 trazas temporales (eje x: `t [s]`, 0–15 s)
 
-**1. CSI medio `ā(t)` — "materia prima" [a.u.]**
+**1. CSI medio $\bar{a}(t)$ — "materia prima" [a.u.]**
 La amplitud promedio cruda. *Cómo leerla*: a simple vista ya se ve la
 respiración como una onda lenta y suave; un movimiento corporal es un
 salto brusco; la sala vacía es casi una línea con ruido fino. Si esta
@@ -253,14 +253,14 @@ traza se ensucia primero.
 
 ### Derecha — los 3 paneles físicos (1 Hz)
 
-**4. Heatmap de subportadoras `|H_k|` [dB]**
+**4. Heatmap de subportadoras $|H_k|$ [dB]**
 Todas las subportadoras a la vez (y = subportadora, x = tiempo, color =
 amplitud). *Cómo leerla*: las franjas verticales más claras son las
 subportadoras "buenas" — las que el paso 3 elige. Si todo el panel se
 oscurece de golpe, algo tapó el enlace.
 
 **5. Espectrograma `X(τ,f)` [dB]**
-El contenido de frecuencia de `ā(t)` a lo largo del tiempo. *Cómo
+El contenido de frecuencia de $\bar{a}(t)$ a lo largo del tiempo. *Cómo
 leerla*: buscá una **franja horizontal** — una línea brillante y
 estable a la altura de la frecuencia respiratoria (~0,2–0,3 Hz) es tu
 respiración dibujada en el tiempo; la franja resaltada en verde/rojo

@@ -9,7 +9,7 @@ ESP32-S3 nodes (CSI capture) ──MQTT──► Mosquitto (Docker) ◄── Py
       (one or more, per-device topics)                                          └──► Web viewer (backend/web_viewer.py → any phone browser on the LAN)
 ```
 
-- **Amplitude-only CSI** — the firmware discards subcarrier phase and publishes only `a_k = |H_k|`.
+- **Amplitude-only CSI** — the firmware discards subcarrier phase and publishes only $a_k = |H_k|$.
 - **Single antenna per link** — no antenna array, no per-link AoA. **Multiple links (multi-ESP32) ARE supported** since 2026-10: each device publishes to its own topic and the backend fuses per band (see §8).
 - **Estimated today** — presence (absent / still / moving) and a coarse RSSI link-distance.
 - **Not estimated** — geometric coordinates (x/y), posture, body orientation, angle of arrival.
@@ -36,7 +36,7 @@ The firmware keeps only the amplitude
 a_k = \mathrm{round}\left(\sqrt{I_k^2 + Q_k^2}\right)
 ```
 
-with `|I_k|, |Q_k| ≤ 127` → `a_k ≤ ~180`, which fits a `uint8`. **Phase is discarded.** The timestamp is `t_us = esp_timer_get_time()` (µs since boot).
+with $|I_k|, |Q_k| \le 127$ → $a_k \lesssim 180$, which fits a `uint8`. **Phase is discarded.** The timestamp is `t_us = esp_timer_get_time()` (µs since boot).
 
 **Transport.** A FreeRTOS queue (depth 32) decouples the WiFi-task callback from the publisher task. esp-mqtt publishes ASCII CSV
 
@@ -50,7 +50,7 @@ to topic `esp32/csi/raw` on a Mosquitto broker (Docker).
 
 ## 3. Physical principles
 
-**OFDM CSI.** Each OFDM subcarrier probes the multipath channel; a moving/scattering body perturbs `H_k`.
+**OFDM CSI.** Each OFDM subcarrier probes the multipath channel; a moving/scattering body perturbs $H_k$.
 
 **Fresnel-zone model.** The Fresnel zones are ellipsoids around the TX–RX axis. The radius of the n-th zone, with `d1`, `d2` the distances from TX and RX to the body, is
 
@@ -58,7 +58,7 @@ to topic `esp32/csi/raw` on a Mosquitto broker (Docker).
 r_n = \sqrt{\frac{n \lambda d_1 d_2}{d_1 + d_2}}
 ```
 
-A person near the first Fresnel-zone boundary strongly modulates `|H_k|`.
+A person near the first Fresnel-zone boundary strongly modulates $|H_k|$.
 
 **Vital-sign displacement.** Chest displacement is modeled as
 
@@ -94,7 +94,7 @@ Indoor `n_pl ≈ 2.7–4.3`; `X_sigma` is shadowing (a person near the LOS path 
 
 ## 4. Processing chain (exact implemented formulas)
 
-**Sliding window.** `N = round(fs · T_w)` samples; defaults `fs = 10 Hz`, `T_w = 15 s` → `N = 150` rows × `K` subcarriers.
+**Sliding window.** $N = \mathrm{round}(f_s \cdot T_w)$ samples; defaults $f_s = 10\ \mathrm{Hz}$, $T_w = 15\ \mathrm{s}$ → $N = 150$ rows × $K$ subcarriers.
 
 ```math
 N = \mathrm{round}(f_s \cdot T_w)
@@ -126,9 +126,9 @@ In-band SNR per subcarrier:
 \mathrm{SNR}_k = 20 \log_{10}\left(\frac{\text{in-band peak}}{\text{in-band median}}\right)
 ```
 
-The subcarrier with max `SNR_k` wins.
+The subcarrier with max $\mathrm{SNR}_k$ wins.
 
-**Rate conversion.** `BPM = 60 · f_hat_heart`; `breaths/min = 60 · f_hat_resp`. Quality gate: the estimate is discarded if `SNR < min_snr_db` (default 6 dB).
+**Rate conversion.** $\mathrm{BPM} = 60 \cdot f_{\mathrm{heart}}$; $\mathrm{breaths/min} = 60 \cdot f_{\mathrm{resp}}$. Quality gate: the estimate is discarded if $\mathrm{SNR} < \mathrm{min\_snr\_db}$ (default 6 dB).
 
 **Waveforms.** Zero-phase 3rd-order Butterworth bandpass (`scipy.signal.butter` with `output='sos'` + `sosfiltfilt`): respiration band `0.1–0.5 Hz`, heart band `0.8–2.0 Hz`.
 
@@ -165,7 +165,7 @@ Defaults: `R0 = -52 dBm` at `d0 = 1 m`, `n_pl = 3.0`. This ranges the TX–RX li
 | Symbol | Meaning | Unit | Where it comes from |
 | --- | --- | --- | --- |
 | `H_k` | Complex channel coefficient | unitless (complex) | `csi_buf` I/Q pairs |
-| `a_k = \|H_k\|` | Subcarrier amplitude | uint8 counts | CSV fields `a0..a(K-1)` |
+| $a_k = \lvert H_k \rvert$ | Subcarrier amplitude | uint8 counts | CSV fields `a0..a(K-1)` |
 | `I_k` / `Q_k` | Signed I/Q bytes | int8 | `csi_buf[2i]`, `csi_buf[2i+1]` |
 | `K` | Subcarrier count | count | CSV field `n` = `csi_len/2` |
 | `t_us` | Timestamp | µs since boot | `esp_timer_get_time()` |
@@ -173,11 +173,11 @@ Defaults: `R0 = -52 dBm` at `d0 = 1 m`, `n_pl = 3.0`. This ranges the TX–RX li
 | `seq` | Packet sequence | counter | firmware counter |
 | `fs` | CSI sampling rate | Hz | config `CSI_FS` (matches ping interval) |
 | `T_w` | Window length | s | config `CSI_WINDOW_S` |
-| `N` | Samples per window | count | derived: `N = round(fs·T_w)` |
+| $N$ | Samples per window | count | derived: $N = \mathrm{round}(f_s \cdot T_w)$ |
 | `w[n]` | Hann window | unitless | `np.hanning` |
 | `X[f]` | Magnitude spectrum | unitless | `abs(np.fft.rfft(x·w))` |
 | `f_hat` | Estimated frequency | Hz | quadratic interpolation on log-spectrum |
-| `SNR_k` | In-band SNR of subcarrier `k` | dB | `20·log10(peak/median)` |
+| $\mathrm{SNR}_k$ | In-band SNR of subcarrier $k$ | dB | $20\cdot\log_{10}(\text{peak}/\text{median})$ |
 | `BPM` | Heart rate | beats/min | `60·f_hat_heart` |
 | `breaths/min` | Respiration rate | breaths/min | `60·f_hat_resp` |
 | `min_snr_db` | Quality gate | dB | config `CSI_MIN_SNR_DB` |
@@ -232,7 +232,7 @@ clock domains never corrupt each other's windows (the reason a shared window
 is not an option).
 
 **Fusion (per band, max SNR).** For each physiological band independently,
-the link whose in-band SNR (`SNR_k`, §4) is highest wins the estimate:
+the link whose in-band SNR ($\mathrm{SNR}_k$, §4) is highest wins the estimate:
 
 ```math
 \hat{f}_{heart} = \hat{f}\left( \arg\max_{\ell \in L} \mathrm{SNR}_{heart}(\ell) \right), \qquad

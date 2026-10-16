@@ -36,15 +36,15 @@ movimiento 600 s.
 firmware disparó). **Qué sale**: un callback con `wifi_csi_info_t`.
 
 1. El canal de 20 MHz viaja en decenas de subportadoras (tonos OFDM).
-   Cada tono sufre SU versión del canal: `H_k = Σ(caminos)` — la suma de
+   Cada tono sufre SU versión del canal: $H_k = \sum(\text{caminos})$ — la suma de
    ecos con distintas longitudes/fases (multipath).
 2. El pecho (mm al respirar, sub-mm al latir, `x(t) ≈ A_b·sin(2πf_b·t)`,
    respiración 0,1–0,5 Hz, corazón 0,8–2,0 Hz) perturba caminos dentro
-   de las zonas de Fresnel → `|H_k(t)|` queda modulado con ese ritmo.
+   de las zonas de Fresnel → $|H_k(t)|$ queda modulado con ese ritmo.
    λ ≈ 12,44 cm (canal 1; el firmware no fija canal — aproximación
    documentada).
-3. El driver entrega `I_k, Q_k` por tono; el firmware publica SOLO la
-   amplitud `a_k = √(I²+Q²)` (int 0..255), **la fase se descarta a
+3. El driver entrega $I_k, Q_k$ por tono; el firmware publica SOLO la
+   amplitud $a_k = \sqrt{I^2+Q^2}$ (int 0..255), **la fase se descarta a
    propósito** (limitación documentada; `atan2(Q,I)` es el camino futuro
    en `SIGNAL-MODELING.md` §3).
 4. Config CSI (verificada en `config.h`/SIGNAL-MODELING §2):
@@ -56,7 +56,7 @@ firmware disparó). **Qué sale**: un callback con `wifi_csi_info_t`.
 **Por qué así**: sin fase, la sensibilidad viene de modulación de
 amplitud por multipath — funciona porque el pecho cerca de la zona de
 Fresnel perturba la SUMA de caminos. El ping propio garantiza el
-"flash" a `fs ≈ 10 Hz` aunque nadie más use la red.
+"flash" a $f_s \approx 10\ \mathrm{Hz}$ aunque nadie más use la red.
 
 ## 2. Etapa 1–2 — firmware → MQTT → backend
 
@@ -107,7 +107,7 @@ Archivo: `vitals_processor.py` (verificado línea a línea).
 → ventana nueva (link físicamente distinto). *Por qué: una sola fila
 corrupta envenena media/FFT/heatmap (comentario R1/R4 del propio código).*
 
-**Ventana**: `deque(maxlen = max(16, round(fs·T_w))) = 150` filas × K
+**Ventana**: `deque(maxlen = max(16,` $\mathrm{round}(f_s \cdot T_w)$`)) = 150` filas × K
 columnas (10 Hz × 15 s). *Por qué deque: ventana deslizante O(1), sin
 poda manual; por qué 15 s: ~4 ciclos respiratorios y ~15 cardíacos — la
 resolución de la FFT es `Δf = 1/15 s ≈ 0,0667 Hz`.*
