@@ -31,8 +31,8 @@ El WiFi de 2,4 GHz es una onda electromagnética que vibra 2 400 millones
 de veces por segundo. Su **longitud de onda** (la distancia entre dos
 crestas) es:
 
-```
-λ = c / f = 299.792.458 m/s / 2,412 GHz ≈ 12,44 cm   (canal 1)
+```math
+\lambda = \frac{c}{f} = \frac{299{,}792{,}458\ \mathrm{m/s}}{2.412\ \mathrm{GHz}} \approx 12.44\ \mathrm{cm}
 ```
 
 *(El firmware no fija el canal del router, así que 12,44 cm es una
@@ -65,9 +65,8 @@ vez que algo se mueve** en la sala.
 
 Modelo del proyecto (el mismo de `docs/SIGNAL-MODELING.md` §3):
 
-```
-x(t) ≈ A_b · sin(2π·f_b·t)     f_b respiración ∈ 0,1–0,5 Hz
-                                (contenido cardíaco en 0,8–2,0 Hz)
+```math
+x(t) \approx A_b \sin(2\pi f_b t) \quad f_b \text{ respiración} \in [0.1, 0.5]\ \mathrm{Hz}
 ```
 
 Esos milímetros son **muy poco** comparados con λ (12,44 cm) — y sin

@@ -114,8 +114,8 @@ El ESP32-S3 expone el CSI crudo (I/Q por subportadora) mediante la API nativa `e
 
 Para la subportadora `k`, cada muestra del CSI responde a:
 
-```
-a_k[n] = C_k + B·sin(2π·f_resp·t_n + φ_k) + H·sin(2π·f_heart·t_n + ψ_k) + ε_k[n]
+```math
+a_k[n] = C_k + B\cdot\sin(2\pi f_\text{resp} t_n + \varphi_k) + H\cdot\sin(2\pi f_\text{heart} t_n + \psi_k) + \varepsilon_k[n]
 ```
 
 | Variable | Qué es | Valor típico | De dónde proviene |
@@ -137,29 +137,28 @@ Todo el estimador descansa en una idea de Fourier (1807): **toda señal periódi
 
 1. **Serie de Fourier** (señal continua y periódica, período `T`):
 
-```
-x(t) = a₀/2 + Σₙ [ aₙ·cos(2π·n·f₀·t) + bₙ·sin(2π·n·f₀·t) ],     f₀ = 1/T
+```math
+x(t) = \frac{a_0}{2} + \sum_{n=1}^{\infty} \left[ a_n \cos(2\pi n f_0 t) + b_n \sin(2\pi n f_0 t) \right], \quad f_0 = \frac{1}{T}
 ```
 
 Los coeficientes se obtienen correlacionando la señal con cada seno/coseno durante un período:
 
-```
-aₙ = (2/T)·∫₀ᵀ x(t)·cos(2π·n·f₀·t) dt
-bₙ = (2/T)·∫₀ᵀ x(t)·sin(2π·n·f₀·t) dt
+```math
+a_n = \frac{2}{T}\int_0^T x(t)\cos(2\pi n f_0 t)\,dt \quad b_n = \frac{2}{T}\int_0^T x(t)\sin(2\pi n f_0 t)\,dt
 ```
 
 Interpretación: `aₙ, bₙ` dicen *cuánta* componente de frecuencia `n·f₀` tiene la señal.
 
 2. **Transformada de Fourier** (señal continua no periódica): generaliza los coeficientes a un continuo de frecuencias:
 
-```
-X(f) = ∫ x(t)·e^(−i2πft) dt
+```math
+X(f) = \int_{-\infty}^{\infty} x(t)\,e^{-i2\pi ft}\,dt
 ```
 
 3. **DFT — Transformada Discreta de Fourier** (lo único que una computadora puede calcular, porque nuestros datos son `N` muestras): evalúa esa correlación solo en `N` frecuencias discretas:
 
-```
-X[k] = Σₙ₌₀^(N−1) x[n]·e^(−i2π·k·n/N),     k = 0 … N−1
+```math
+X[k] = \sum_{n=0}^{N-1} x[n]\,e^{-i2\pi kn/N}, \quad k = 0,\dots,N-1
 ```
 
 Por la identidad de Euler (`e^(−iθ) = cos θ − i·sin θ`), `X[k]` es literalmente *multiplicar la señal por el seno y el coseno muestreados a la frecuencia del bin `k` y sumar todo*:
@@ -198,8 +197,8 @@ Por qué 15 s: el fenómeno más lento a detectar es la respiración a 0.1 Hz �
 
 #### Paso 2 — Detrend (eliminación de DC y deriva)
 
-```
-x'[n] = x[n] − (m·n + b)
+```math
+x'[n] = x[n] - (m n + b)
 ```
 
 | Variable | Qué es | Origen |
@@ -210,8 +209,8 @@ Elimina `C_k` (el DC del modelo de §3.2) y la deriva lenta del canal. Sin esto,
 
 #### Paso 3 — Ventana de Hann
 
-```
-w[n] = ½·(1 − cos(2π·n/(N−1))),     n = 0 … N−1
+```math
+w[n] = \tfrac{1}{2}\left(1 - \cos\frac{2\pi n}{N-1}\right), \quad n = 0,\dots,N-1
 ```
 
 | Variable | Valor | Origen |
@@ -222,9 +221,12 @@ Por qué: cortar la señal de punta a punta (ventana rectangular) equivale, en f
 
 #### Paso 4 — FFT (la DFT aplicada)
 
+```math
+X[k] = \sum_n x[n]\,w[n]\,e^{-i2\pi kn/N} \quad |X[k]| = \sqrt{\operatorname{Re}^2 + \operatorname{Im}^2}
 ```
-X[k] = Σₙ x[n]·w[n]·e^(−i2π·k·n/N)          |X[k]| = √(Re² + Im²)
-f_k = k·fs/N                Δf = fs/N = 10/150 ≈ 0.0667 Hz
+
+```math
+f_k = \frac{k\cdot f_s}{N} \quad \Delta f = \frac{f_s}{N} = \frac{10}{150} \approx 0.067\ \mathrm{Hz}
 ```
 
 | Variable | Valor | Origen |
@@ -245,19 +247,18 @@ Problema: el pico verdadero casi nunca cae exacto en un bin; `Δf ≈ 0.067 Hz` 
 
 Truco: cerca del máximo, el lóbulo en escala logarítmica es casi una parábola (el logaritmo de una campana gaussiana es *exactamente* una parábola). Se ajusta la parábola que pasa por el pico y sus dos vecinos, con `l = ln|X|`:
 
+```math
+\text{puntos: } (-1,\,l_-),\;(0,\,l_0),\;(1,\,l_+) \quad (l_0 = \ln\text{ del bin pico})
 ```
-puntos:  (−1, l₋),  (0, l₀),  (1, l₊)          (l₀ = ln del bin pico)
-p(x)  = a·x² + b·x + c
-a      = ½·(l₋ − 2·l₀ + l₊)
-b      = ½·(l₊ − l₋)
-c      = l₀
+
+```math
+p(x) = ax^2 + bx + c \quad a = \tfrac{1}{2}(l_- - 2l_0 + l_+) \quad b = \tfrac{1}{2}(l_+ - l_-) \quad c = l_0
 ```
 
 El vértice de una parábola está en `x* = −b/(2a)`, entonces:
 
-```
-δ      = −b/(2a) = ½·(l₋ − l₊) / (l₋ − 2·l₀ + l₊)
-f_peak = f[k*] + δ·Δf
+```math
+\delta = -\frac{b}{2a} = \frac{\tfrac{1}{2}(l_- - l_+)}{l_- - 2l_0 + l_+} \quad f_\text{peak} = f[k^*] + \delta\cdot\Delta f
 ```
 
 | Variable | Qué es | Origen |
@@ -271,8 +272,8 @@ Efecto: la resolución pasa de ~4 bpm a **~1 bpm** (por eso el test unitario con
 
 #### Paso 7 — Compuerta de calidad SNR
 
-```
-SNR_dB = 20·log₁₀( pico / mediana )
+```math
+\mathrm{SNR}_{\mathrm{dB}} = 20\cdot\log_{10}\!\left(\frac{S_\text{pico}}{S_\text{mediana}}\right)
 ```
 
 | Variable | Qué es | Origen |

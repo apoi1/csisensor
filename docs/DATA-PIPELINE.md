@@ -155,29 +155,35 @@ ventana corta → devuelve la señal detrended tal cual.
 *Por qué: sin calidad no hay número — honestidad por diseño.*
 
 **Presencia/movimiento** (`motion_analyzer.py`, verificado):
+
+```math
+x = \text{media de amplitudes por paquete} \quad x_d = \operatorname{detrend}(x) \quad \sigma_\text{ventana} = \operatorname{std}(x_d)
 ```
-x      = media de amplitudes por paquete   (proxy de perturbación del canal)
-x_d    = detrend(x)
-σ_ventana = std(x_d)                        # plana = sala vacía
-RMS_mov   = √( mean( sosfiltfilt(butter(ord, [0.5, 3.0]), x_d)² ) )
-            ord = 3 si n ≥ 30, si no 2;  con <14 muestras → σ (fallback
-            documentado: el fallback arrastra contenido de respiración)
-estado: σ < 0.15 → Absent | RMS > 1.5 → Moving | si no → Still
+
+```math
+\mathrm{RMS}_\text{mov} = \sqrt{\operatorname{mean}(\operatorname{sosfiltfilt}(\operatorname{butter}(\mathrm{ord},[0.5,3.0]),x_d)^2)} \quad \mathrm{ord} = \begin{cases}3 & n\ge 30\\2 & \text{si no}\end{cases}
+```
+
+```math
+\text{estado: } \sigma < 0.15 \to \text{Absent} \;|\; \mathrm{RMS} > 1.5 \to \text{Moving} \;|\; \text{si no} \to \text{Still}
 ```
 **Distancia RSSI** (log-distance path loss, calibrable/apagable):
+
+```math
+\hat{d} = d_0 \cdot 10^{\frac{R_0 - \bar{R}}{10\,n_{pl}}} \quad \bar{R} = \text{media del RSSI de la ventana}
 ```
-d̂ = d0 · 10^((R0 − R̄)/(10·n_pl))    R̄ = media del RSSI de la ventana
-R0 = CSI_RSSI_REF_DBM (−52), d0 = CSI_REF_DISTANCE_M (1.0), n_pl = CSI_PATH_LOSS_N (3.0)
-"none"/vacío en cualquiera → desactivado → GUI muestra "—"
+
+```math
+R_0 = \texttt{CSI\_RSSI\_REF\_DBM}\;(-52) \quad d_0 = \texttt{CSI\_REF\_DISTANCE\_M}\;(1.0) \quad n_{pl} = \texttt{CSI\_PATH\_LOSS\_N}\;(3.0)
 ```
 *Por qué: modelo estándar indoor (`n_pl ≈ 2,7–4,3`); sin calibración real
 es mejor `—` que un número inventado.*
 
 **Fusión multi-link** (`link_manager.estimate`, verificado):
+
+```math
+\text{vivos} = \{\text{links}: \text{ahora} - t_\text{ingest} \le 20\text{ s}\} \quad \text{por banda: gana el mayor SNR en ESA banda} \quad \text{primary} = \text{ganador cardíaco}
 ```
-vivos      = { links : ahora − t_ingest ≤ 20 s }     (poda en CADA pasada)
-por banda  : gana el link con mayor SNR en ESA banda   (≠ ganadores)
-primary    = ganador cardíaco
 presencia  : Moving si alguno Moving | Still si alguno Still | si no Absent
 RMS        = máx entre links vivos listos
 σ/RSSI/d   : los del primary (o el primero listo)
