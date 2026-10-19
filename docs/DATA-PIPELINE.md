@@ -7,7 +7,10 @@
 > no de otra manera**, y **la correspondencia final dato visible ←
 > origen**. Cada afirmación está verificada contra el código fuente
 > (archivo y función citados). Compañeros: `docs/HOW-IT-WORKS.md`
-> (versión simple) y `docs/SIGNAL-MODELING.md` (fórmulas + provenance).
+> (versión simple), `docs/SIGNAL-MODELING.md` (fórmulas + provenance)
+> y, para el sistema y flujo interno de cada software,
+> `docs/FIRMWARE-ESP32.md` (la placa) y `docs/DESKTOP-APP.md` (el
+> aplicativo).
 
 ---
 
@@ -43,10 +46,13 @@ firmware disparó). **Qué sale**: un callback con `wifi_csi_info_t`.
    de las zonas de Fresnel → $|H_k(t)|$ queda modulado con ese ritmo.
    λ ≈ 12,44 cm (canal 1; el firmware no fija canal — aproximación
    documentada).
-3. El driver entrega $I_k, Q_k$ por tono; el firmware publica SOLO la
-   amplitud $a_k = \sqrt{I^2+Q^2}$ (int 0..255), **la fase se descarta a
-   propósito** (limitación documentada; `atan2(Q,I)` es el camino futuro
-   en `SIGNAL-MODELING.md` §3).
+3. El driver entrega $I_k, Q_k$ por tono — las coordenadas del tono
+   recibido contra la referencia en fase (I) y la desfasada 90° (Q): su
+   longitud es la amplitud, su ángulo la fase. El firmware publica SOLO
+   la longitud: $a_k = \sqrt{I^2+Q^2}$ (int 0..255), **la fase se
+   descarta a propósito** (limitación documentada; `atan2(Q,I)` es el
+   camino futuro en `SIGNAL-MODELING.md` §3; el detalle físico, en
+   `docs/FIRMWARE-ESP32.md` §5).
 4. Config CSI (verificada en `config.h`/SIGNAL-MODELING §2):
    `lltf_en`, `htltf_en`, `stbc_htltf2_en`, `ltf_merge_en = true`,
    `manu_scale = false`, `channel_filter_en = CSI_CHANNEL_FILTER (true)`

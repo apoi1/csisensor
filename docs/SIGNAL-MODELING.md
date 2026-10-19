@@ -30,6 +30,8 @@ The native ESP-IDF CSI API is used: `esp_wifi_set_csi_config` (`lltf_en`, `htltf
 H_k = I_k + j Q_k
 ```
 
+Physically, the receiver recovers each received tone by projecting it onto two phase references: the carrier itself (**I**, *in-phase*) and the carrier shifted by 90° (**Q**, *quadrature*). The signed pair $(I_k, Q_k)$ are the coordinates of the received phasor for subcarrier `k`: its **length** is the amplitude $a_k = \lvert H_k \rvert$ and its **angle** $\mathrm{atan2}(Q_k, I_k)$ is the phase shift the channel introduced on that tone (the firmware-side view is in `docs/FIRMWARE-ESP32.md` §5).
+
 The firmware keeps only the amplitude
 
 ```math

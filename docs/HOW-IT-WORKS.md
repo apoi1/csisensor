@@ -1,11 +1,15 @@
 # Cómo funciona — WiFi-CSI Vital Signs (la guía "para niños, pero técnica")
 
-> **Para quién es esta guía.** Si tenés que explicarle este proyecto a tu
-> mamá, a un compañero de trabajo o en una entrevista: cada sección acá
-> tiene primero la **versión en una frase** y después la **versión
-> técnica exacta** (con los números reales de ESTE proyecto). La versión
-> profunda con todas las fórmulas vive en `docs/SIGNAL-MODELING.md`.
-> No es un dispositivo médico: es una herramienta de investigación.
+> **Para quién es esta guía.** Si llegaste a este repositorio y te
+> preguntás cómo un router y una placa de desarrollo pueden contar
+> respiraciones sin cámara ni sensor de contacto: cada sección acá tiene
+> primero la **versión en una frase** y después la **versión técnica
+> exacta** (con los números reales de ESTE proyecto), para que puedas
+> contar el sistema de punta a punta. La versión profunda con todas las
+> fórmulas vive en `docs/SIGNAL-MODELING.md`; la documentación de cada
+> software está en `docs/FIRMWARE-ESP32.md` (la placa) y
+> `docs/DESKTOP-APP.md` (el aplicativo). No es un dispositivo médico: es
+> una herramienta de investigación.
 
 ---
 
@@ -27,9 +31,12 @@ el ESP32 recibe. Esa modulación ES la respiración y el latido.
 
 ### 2.1 El espectro electromagnético y el WiFi
 
-El WiFi de 2,4 GHz es una onda electromagnética que vibra 2 400 millones
-de veces por segundo. Su **longitud de onda** (la distancia entre dos
-crestas) es:
+El WiFi de 2,4 GHz es una onda electromagnética: campos eléctrico y
+magnético que **vibran 2 400 millones de veces por segundo** (eso es la
+"frecuencia": cuántas vibraciones por segundo). La onda avanza a la
+velocidad de la luz, así que durante **una sola vibración** recorre una
+distancia fija — esa distancia es la **longitud de onda** (el trecho
+entre dos crestas), y sale de dividir la velocidad por la frecuencia:
 
 ```math
 \lambda = \frac{c}{f} = \frac{299{,}792{,}458\ \mathrm{m/s}}{2.412\ \mathrm{GHz}} \approx 12.44\ \mathrm{cm}
@@ -51,6 +58,15 @@ atravesó tu cuerpo y se dispersó… Cada camino tiene una longitud
 distinta, así que las copias llegan "desalineadas" y se suman mal o bien
 según el punto donde estén. A eso se lo llama canal, y cambia **cada
 vez que algo se mueve** en la sala.
+
+**Cómo se suman**: una copia que viajó $\lambda/2 \approx 6{,}2$ cm más
+que otra llega media vibración tarde — sus crestas caen sobre los
+valles de la otra y se cancelan; una que viajó $\lambda \approx 12{,}4$
+cm más llega una vibración entera tarde y se suma en fase de nuevo. El
+canal resultante es la suma instantánea de todas las copias con sus
+fases, y es sensible a cambios de posición de **milímetros**: mover un
+camino 1,24 cm ($\lambda/10$) ya rota su fase 36°. El canal es,
+literalmente, una huella digital de la geometría de la sala.
 
 > **Metáfora**: es una sala llena de espejos. Si un espejo se mueve un
 > milímetro, la imagen compuesta cambia. Si el "espejo" es el pecho de
@@ -78,31 +94,46 @@ caminos de forma medible.
 > **Aclaración honesta**: medir el corazón es mucho más difícil que la
 > respiración, porque su desplazamiento es ~10 veces más chico. Por eso
 > el sistema te muestra `-` cuando la señal no supera la compuerta de
-> calidad (§4, paso 6) — prefiere decir "no sé" a inventar un número.
+> calidad (§5, paso 6) — prefiere decir "no sé" a inventar un número.
 
 ### 2.4 Los paquetes de red: los "flashes" de la linterna
 
 Para medir el canal hace falta que llegue una señal. El WiFi no emite
-continuo como una radio: manda **paquetes** (ráfagas cortas). Cada
-paquete recibido es un "flash" con el que el ESP32 puede fotografiar el
-canal. ¿Y si nadie está descargando nada? El firmware **genera su
-propia luz**: manda un `ping` al router cada 100 ms
-(`USE_TRAFFIC_PING 1` en `config.h`), lo que produce ~10 paquetes/s
-→ **fs ≈ 10 Hz**: 10 "fotos del canal" por segundo.
+continuo como una radio: manda **paquetes** (ráfagas cortas de
+milisegundos). Y el chip está diseñado para aprovecharlas: cada frame
+802.11n recibido incluye campos de **entrenamiento** — tonos que el
+router emite "de referencia" — y la radio los usa para calcular cómo
+llegó cada subportadora comparando lo recibido contra esa referencia.
+El resultado se entrega al programa como **CSI** vía un callback del
+driver (`esp_wifi_set_csi_rx_cb`): cada paquete recibido es una "foto"
+del canal, sin costo extra. ¿Y si nadie está descargando nada? El
+firmware **genera su propia luz**: una sesión de ping al gateway
+(`USE_TRAFFIC_PING 1` en `config.h`) manda un echo ICMP cada
+`CSI_INTERVAL_MS = 100` ms y el router le responde — cada respuesta
+recibida dispara una foto → **fs ≈ 10 Hz**: 10 "fotos del canal" por
+segundo (el mecanismo completo, en `docs/FIRMWARE-ESP32.md` §4).
 
 ### 2.5 OFDM: los 64 "colores" del flash
 
 Un paquete WiFi moderno (802.11n, OFDM) no es un solo tono: viaja en
 decenas de **subportadoras** — tonos equiespaciados dentro del canal de
-20 MHz. El ESP32 reporta cómo llegó **cada tono por separado**: el
-chip entrega hasta 128 subportadoras (el S3 usa **~64** en la práctica,
-`K = csi_len/2`).
+20 MHz, como un acorde con ~64 notas. Para cada nota, el receptor la
+compara contra **dos referencias**: la portadora misma (**I**, *in-phase*:
+cuánto sobrevivió en fase) y la portadora girada 90° (**Q**,
+*quadrature*: cuánto llegó desfasado). Los dos números con signo
+$(I_k, Q_k)$ son las coordenadas del tono recibido visto como flecha:
+su **longitud** es la amplitud y su **ángulo** es la fase. El chip
+reporta esas coordenadas para **cada tono por separado** (hasta 128; el
+S3 usa **~64** en la práctica, `K = csi_len/2`).
 
-Eso es la **CSI**: un vector de ~64 amplitudes por paquete,
-$a_k = |H_k|$ — *el firmware descarta la fase* (un diseño honesto y
-documentado; ver `docs/SIGNAL-MODELING.md` §1). Cada subportadora es un
-"punto de vista" distinto del mismo canal: alguna mira el pecho mejor,
-otra está tapada por la heladera, otra solo ve ruido.
+Eso es la **CSI**: por cada paquete, un vector de ~64 pares $(I_k, Q_k)$.
+El firmware calcula la longitud de cada flecha —
+$a_k = \lvert H_k \rvert = \sqrt{I_k^2 + Q_k^2}$ — y **descarta el
+ángulo** (la fase; un diseño honesto y documentado, ver
+`docs/SIGNAL-MODELING.md` §1 y el detalle físico en
+`docs/FIRMWARE-ESP32.md` §5). Cada subportadora es un "punto de vista"
+distinto del mismo canal: alguna mira el pecho mejor, otra está tapada
+por la heladera, otra solo ve ruido.
 
 **Comportamiento esperado** (y es lo que aprovecha el procesamiento):
 
@@ -127,6 +158,9 @@ t_us, rssi, n, seq, a0, a1, a2, ... a(n-1)
 1717000000123456,-52,64,42,178,176,171,169,...
 ```
 
+*(La fila nace en el firmware — `docs/FIRMWARE-ESP32.md` §5 — y la
+consume el aplicativo — `docs/DESKTOP-APP.md` §3.)*
+
 | Campo | Qué es | Unidad física |
 |---|---|---|
 | `t_us` | reloj del chip (desde el arranque) | microsegundos |
@@ -143,7 +177,49 @@ convierten a **dB** para que quepa todo en pantalla; RSSI va en
 
 ---
 
-## 4. El "lavado" de datos: de 64 números ruidosos a 1 número legible
+## 4. El viaje de una medición: de la onda al número en pantalla
+
+La historia completa de UNA medición, sin saltos — cada paso con su
+profundización:
+
+1. **El router emite un frame** 802.11n: una ráfaga de ~64 tonos
+   equiespaciados (OFDM) que viaja a la velocidad de la luz.
+2. **La onda recorre la sala y rebota**: paredes, techo, muebles… y el
+   pecho de una persona, que se mueve milímetros al respirar. Cada copia
+   llega a la placa con su propio retraso y su propia atenuación (§2.2).
+3. **La radio de la ESP32 recibe la suma de todas las copias.** Por cada
+   tono, el driver demodula contra las dos referencias (§2.5) y entrega
+   $(I_k, Q_k)$ — las coordenadas de cómo llegó ese tono.
+4. **El firmware reduce cada flecha a su longitud**:
+   $a_k = \sqrt{I_k^2 + Q_k^2}$ (0–255), pega el reloj (`t_us`), la
+   potencia del paquete (`rssi`) y el número de orden (`seq`), y suelta
+   la fila a una cola.
+5. **Cada 100 ms, la fila viaja como CSV por MQTT** al tópico de SU
+   placa (`esp32/<id>/csi/raw`) — el ping propio garantiza el ritmo
+   (§2.4). El firmware completo: `docs/FIRMWARE-ESP32.md`.
+6. **El aplicativo recibe la fila, la valida y la apila**: guardas de
+   integridad (¿NaN? ¿reloj que retrocede? ¿ancho que cambió?) y una
+   ventana deslizante de 15 s — 150 filas × ~64 tonos, por placa.
+7. **El DSP busca la señal**: para cada banda fisiológica elige el tono
+   que "mejor ve" el pecho (mejor SNR), le quita la deriva, la filtra a
+   la banda y la mira con la FFT (§5, pasos 3–5).
+8. **La compuerta de honestidad decide**: si el pico no sobresale 6 dB
+   del piso de ruido, no hay número — la pantalla muestra `-`
+   (§5, paso 6).
+9. **La GUI pinta**: trazas crudas y filtradas, el heatmap de las 64
+   subportadoras, el espectrograma, y los BPM / respiraciones por
+   minuto. Con varias placas, cada banda gana la que mejor la ve. El
+   aplicativo completo: `docs/DESKTOP-APP.md`.
+
+Una persona sentada entre el router y la placa desplaza el pecho unos
+milímetros por respiración: eso rota las fases de los caminos que la
+rozan, cambia la suma que recibe la antena, y la medición tiembla con
+ese ritmo — el resto del viaje consiste en **no perder ese temblor por
+el camino**.
+
+---
+
+## 5. El "lavado" de datos: de 64 números ruidosos a 1 número legible
 
 Esta es la guía práctica de cada paso. `ENTRA → SE HACE → SALE → POR QUÉ`.
 
@@ -222,7 +298,7 @@ medición, y una placa apagada no gana nada para siempre.*
 
 ---
 
-## 5. Las gráficas: qué mide cada una y cómo leerla
+## 6. Las gráficas: qué mide cada una y cómo leerla
 
 El GUI de escritorio tiene 6 paneles + una franja de medidas bajo el
 canvas que lista todas las cantidades con sus unidades. Ejecutá el
@@ -283,7 +359,7 @@ links y cuál es el primary (el que gana el corazón).
 
 ---
 
-## 6. Resultados esperados y límites (honestos)
+## 7. Resultados esperados y límites (honestos)
 
 - **Respiración**: robusta a 0,5–4 m con línea de vista; funciona hasta
   con alguien en la misma sala sin línea directa.
@@ -300,7 +376,7 @@ links y cuál es el primary (el que gana el corazón).
 
 ---
 
-## 7. Tres frases listas para alguien no técnico
+## 8. Tres frases listas para alguien no técnico
 
 1. *"El WiFi rebota en todo, igual que un grito en un cañón. Cuando rebota
    en tu pecho, tiembla al ritmo de tu respiración y tu corazón — y esta
@@ -316,11 +392,13 @@ links y cuál es el primary (el que gana el corazón).
 
 ---
 
-## 8. Para profundizar
+## 9. Para profundizar
 
 | Querés saber… | Andá a |
 |---|---|
-| Las fórmulas exactas implementadas (paso a paso del §4 de acá) | `docs/SIGNAL-MODELING.md` §4 |
+| El software que corre en la placa (arranque, tareas, ping, provisioning) | `docs/FIRMWARE-ESP32.md` |
+| El aplicativo de escritorio por dentro (hilos, flujo, ciclo de vida) | `docs/DESKTOP-APP.md` |
+| Las fórmulas exactas implementadas (paso a paso del §5 de acá) | `docs/SIGNAL-MODELING.md` §4 |
 | Calibrar presencia/movimiento y RSSI | `docs/SIGNAL-MODELING.md` §6 |
 | El protocolo de validación empírica | `docs/VALIDATION-PROTOCOL.md` |
 | Cómo desplegarlo paso a paso | `DEPLOYMENT.md` |
