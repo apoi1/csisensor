@@ -112,3 +112,7 @@ encuadre personal "para mí"); cada afirmación verificada contra el código
   **C3** `7c5ab2d` (auditoría + índice + changelog), **C4** (identidades
   odd). Rama `docs/public-journey`; merge a master y push quedan como
   decisión del usuario.
+- **L9** — Entrega autorizada por el usuario (2026-10-18): merge
+  fast-forward `docs/public-journey` → `master` (7bd4333 → 29dc92d) y
+  `git push origin master` (HTTPS). Remoto verificado:
+  `refs/heads/master = 29dc92d` = local. La rama feature se conserva.
