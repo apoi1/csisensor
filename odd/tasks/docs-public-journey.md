@@ -75,3 +75,40 @@ encuadre personal "para mí"); cada afirmación verificada contra el código
   Convención de idiomas decidida: mantener español en la familia
   explicativa (tono público, no traducir); README/SIGNAL-MODELING
   siguen en inglés.
+- **L3**: Consenso del usuario para delegar writers al repo (repo
+  independiente, session-scoped). W2 completó DESKTOP-APP.md (305 ln,
+  spot-checks 7/7). W1 falló sin detalle → firmware doc escrito inline
+  por el parent (289 ln, self-check limpio).
+- **L4** — Commits/slices (work units de la feature):
+  - **C0** `3fb3c1c`: plan ODD (odd/tasks + mirror).
+  - **C1** `c18ccb1`: docs de componentes (FIRMWARE-ESP32.md +
+    DESKTOP-APP.md, 594 ln).
+  - **C2** `50d602e`: narrativa pública + viaje (HOW-IT-WORKS §4 nuevo,
+  renumeración §5-§9) + I/Q en DATA-PIPELINE §1 y SIGNAL-MODELING §2.
+  - Pendientes: **C3** auditoría LaTeX (T5, delegada por context
+    backstop) + README/CHANGELOG/verificación (T6).
+- **L5** — Hallazgos de auditoría conocidos (para T5): línea `deque`
+  malformada en DATA-PIPELINE §4 (backticks + $...$ desbalanceados por
+  7bd4333); fence huérfano tras el bloque de fusión de DATA-PIPELINE §4;
+  "keepalive 60 s" en DATA-PIPELINE §0/§2 pero main.cpp fija 30;
+  matemática en backticks en PROJECT-ARCHITECTURE.md y README.md; y
+  regla nueva: `|…|` crudo dentro de $...$ en celdas de tabla rompe la
+  celda — usar `\lvert \rvert` (hallazgo del W2).
+- **L6** — T5 ejecutado inline por el parent (W3 falló con
+  "assistant reported an error", segunda caída del canal de workers en
+  la sesión): 26 correcciones en 5 archivos + fix factual keepalive
+  60→30. Verificación: 0 `\operatorname`/`\tfrac`, fences pares en
+  todos los .md, 0 matemática unicode fuera de fences, 0 pipes escapados
+  en tablas, 0 fragmentos backtick+math intercalados; diff sin archivos
+  de código. Commit **C3** `7c5ab2d`.
+- **L7** — T6 completado: filas de FIRMWARE-ESP32.md y DESKTOP-APP.md en
+  el Layout del README; CHANGELOG con las secciones Added/Fixed
+  2026-10-18; verificación de links relativos 7/7 OK; suite pytest no
+  disponible en este clone nuevo (sin venv) — irrelevante por
+  construcción: el diff de la rama entera toca solo .md (0 .py/.cpp).
+- **L8** — Cierre del feature. Slice boundary (work units, ~906 líneas
+  de autor + evidencia odd): **C0** `3fb3c1c` (plan), **C1** `c18ccb1`
+  (docs de componentes, 594 ln), **C2** `50d602e` (narrativa + I/Q),
+  **C3** `7c5ab2d` (auditoría + índice + changelog), **C4** (identidades
+  odd). Rama `docs/public-journey`; merge a master y push quedan como
+  decisión del usuario.
