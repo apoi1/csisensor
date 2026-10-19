@@ -106,7 +106,7 @@ Cuando una persona respira o late su corazón, el tórax se desplaza periódicam
 | Respiración | 0.1–0.5 Hz (6–30 /min) | ~1–12 mm | Modulación **fuerte** (fácil) |
 | Latido | 0.8–2.0 Hz (48–120 bpm) | ~0.1–0.5 mm | Modulación **débil** (10–30× menor) |
 
-El ESP32-S3 expone el CSI crudo (I/Q por subportadora) mediante la API nativa `esp_wifi_set_csi_rx_cb`; el callback entrega ~64 subportadoras en el S3 (límite por chip: 128, `CSI_MAX_SUBCARRIERS`). El firmware reduce cada paquete a amplitudes `a_k = √(I² + Q²)` — descartamos la fase porque sin calibración sufre saltos *wrap*; la amplitud basta para detectar la modulación.
+El ESP32-S3 expone el CSI crudo (I/Q por subportadora) mediante la API nativa `esp_wifi_set_csi_rx_cb`; el callback entrega ~64 subportadoras en el S3 (límite por chip: 128, `CSI_MAX_SUBCARRIERS`). El firmware reduce cada paquete a amplitudes $a_k = \sqrt{I^2 + Q^2}$ — descartamos la fase porque sin calibración sufre saltos *wrap*; la amplitud basta para detectar la modulación.
 
 **Problema inverso**: dado un tren de amplitudes `a_k[n]` muestreadas a ~10 Hz, contaminadas de ruido de radio y movimiento, estimar la frecuencia dominante dentro de cada banda fisiológica. Eso es un problema clásico de **detección de tonos en ruido**, resuelto con el aparato de Fourier (§3.3).
 
@@ -120,7 +120,7 @@ a_k[n] = C_k + B\cdot\sin(2\pi f_\text{resp} t_n + \varphi_k) + H\cdot\sin(2\pi 
 
 | Variable | Qué es | Valor típico | De dónde proviene |
 |---|---|---|---|
-| `a_k[n]` | amplitud de la subportadora `k` en la muestra `n` | 0–180 (uint8) | firmware: `a_k = √(I²+Q²)` con `I = csi_buf[2k]`, `Q = csi_buf[2k+1]` (int8 con signo), dentro de `wifi_csi_rx_cb()` (`main.cpp`) |
+| $a_k[n]$ | amplitud de la subportadora $k$ en la muestra $n$ | 0–180 (uint8) | firmware: $a_k = \sqrt{I_k^2+Q_k^2}$ con `I = csi_buf[2k]`, `Q = csi_buf[2k+1]` (int8 con signo), dentro de `wifi_csi_rx_cb()` (`main.cpp`) |
 | `k` | índice de subportadora OFDM | 0–63 | `n = info->csi_len / 2` (bytes I/Q embebidos) en el callback |
 | `n` | índice temporal | 0–149 | un callback CSI por paquete RX (~1 cada 100 ms, generado por el ping) |
 | `t_n` | instante de la muestra `n` | segundos desde el boot | `t_us = esp_timer_get_time()` (µs); la GUI lo convierte: `t_us / 1e6` |
@@ -164,15 +164,15 @@ X[k] = \sum_{n=0}^{N-1} x[n]\,e^{-i2\pi kn/N}, \quad k = 0,\dots,N-1
 Por la identidad de Euler (`e^(−iθ) = cos θ − i·sin θ`), `X[k]` es literalmente *multiplicar la señal por el seno y el coseno muestreados a la frecuencia del bin `k` y sumar todo*:
 
 - si la señal contiene un tono exactamente en la frecuencia del bin `k`, los productos **suman coherentemente** (crecen ~N) → pico grande;
-- si no lo contiene, los productos oscilan y se **cancelan** (~√N·σ) → piso de ruido.
+- si no lo contiene, los productos oscilan y se **cancelan** (~$\sqrt{N}\,\sigma$) → piso de ruido.
 
 Ese contraste pico/piso es exactamente lo que explota la compuerta de SNR (paso 7 de §3.4).
 
 **Vínculo clave con la serie**: la DFT "asume" que tus `N` muestras son un período completo de duración `T = N/fs` y calcula, numéricamente, los coeficientes de la serie de Fourier de esa señal periódica extendida. Por eso los bins caen en múltiplos de `f₀ = 1/T = fs/N` — de esa observación sale la fórmula de resolución `Δf` del paso 4.
 
-4. **FFT — Fast Fourier Transform**: algoritmo (Cooley–Tukey, 1965) que calcula la DFT en `O(N·log N)` en vez de `O(N²)`, separando recursivamente las muestras pares de las impares. **Mismas matemáticas, computadas más rápido.** `np.fft.rfft` es la FFT especializada en entrada real: devuelve solo `k = 0 … N/2` porque con `x[n]` real se cumple `X[N−k] = X̄[k]` (la otra mitad es redundante).
+4. **FFT — Fast Fourier Transform**: algoritmo (Cooley–Tukey, 1965) que calcula la DFT en $O(N\log N)$ en vez de $O(N^2)$, separando recursivamente las muestras pares de las impares. **Mismas matemáticas, computadas más rápido.** `np.fft.rfft` es la FFT especializada en entrada real: devuelve solo $k = 0 \ldots N/2$ porque con $x[n]$ real se cumple $X[N-k] = \bar{X}[k]$ (la otra mitad es redundante).
 
-Nuestro pipeline usa `|X[k]| = √(Re² + Im²)` (la "energía" presente a cada frecuencia `f_k`) y descarta la fase — coherente con lo que ya hizo el firmware al reducir cada paquete a amplitudes.
+Nuestro pipeline usa $\lvert X[k] \rvert = \sqrt{\mathrm{Re}^2 + \mathrm{Im}^2}$ (la "energía" presente a cada frecuencia $f_k$) y descarta la fase — coherente con lo que ya hizo el firmware al reducir cada paquete a amplitudes.
 
 Dos limitaciones concretas de esta teoría moldean el código:
 
@@ -280,15 +280,15 @@ Efecto: la resolución pasa de ~4 bpm a **~1 bpm** (por eso el test unitario con
 |---|---|---|
 | `pico` | máxima magnitud espectral dentro de la banda | paso 4, máximo sobre los bins de la banda |
 | `mediana` | piso de ruido robusto | mediana de las magnitudes dentro de la banda; se usa la mediana y no la media porque la media queda contaminada por el propio pico |
-| el factor `20` | conversión de razón de amplitudes a dB | potencia ∝ amplitud² ⇒ 10·log₁₀(P/P₀) = 20·log₁₀(A/A₀) |
+| el factor `20` | conversión de razón de amplitudes a dB | potencia $\propto \text{amplitud}^2 \Rightarrow 10\,\log_{10}(P/P_0) = 20\,\log_{10}(A/A_0)$ |
 | umbral 6 dB | ⇔ pico ≥ 2× el piso de ruido | `10^(6/20) ≈ 2.0`; configurable con `CSI_MIN_SNR_DB` (`config.py`) |
 
 Si `SNR_dB < 6`, la GUI muestra "-" en lugar de un número basura: mejor no mostrar nada que mostrar ruido.
 
 #### Paso 8 — Filtro Butterworth para graficar (no para estimar)
 
-```
-|H(ω)| = 1 / √(1 + (ω/ω_c)^(2n))          (prototipo; n = 3)
+```math
+\lvert H(\omega) \rvert = \frac{1}{\sqrt{1 + (\omega/\omega_c)^{2n}}} \qquad \text{(prototipo; } n = 3\text{)}
 ```
 
 | Variable | Valor | Origen |

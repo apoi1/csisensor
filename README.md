@@ -26,6 +26,8 @@ ESP32-S3 firmware (C++/ESP-IDF) ──MQTT──► Mosquitto (Docker) ◄──
 | `docs/SIGNAL-MODELING.md` | Signal model: physics, math, variable provenance, calibration, references |
 | `docs/HOW-IT-WORKS.md` | The system explained simply (physics to data cleaning to how to read every chart; in Spanish, for non-technical audiences) |
 | `docs/DATA-PIPELINE.md` | End-to-end methodological framework: every stage from RF input to displayed pixel, with the exact math, the specific technology at each step, and the design rationale (in Spanish) |
+| `docs/FIRMWARE-ESP32.md` | The flashed ESP32-S3 firmware as a system: boot sequence, FreeRTOS task architecture, self-ping sampling, the I/Q→amplitude→CSV→MQTT data journey, config knobs and serial provisioning (in Spanish) |
+| `docs/DESKTOP-APP.md` | The desktop application as a system: thread architecture, the 7-step packet journey with each guard's rationale, process lifecycle, panel provenance, design decisions (in Spanish) |
 | `docs/QUICKSTART-ZOMBIE.md` | Zombie-mode deployment guide: what's already done, one-time fix actions, daily bring-up, from-scratch and portable-kit paths (in Spanish) |
 | `docs/DEPLOYMENT-ALTERNATIVES.md` | Alternative deployments: mosquitto native (no Docker) per platform, the X230/Fedora zombie guide, macOS setup, Android/iOS as viewers, multi-platform compatibility matrix |
 | `odd/` | ODD feature tracking |
@@ -70,7 +72,7 @@ ESP32-S3 firmware (C++/ESP-IDF) ──MQTT──► Mosquitto (Docker) ◄──
 
 ## Signal processing
 
-- The firmware sends per-subcarrier amplitudes `sqrt(I^2+Q^2)` as compact CSV at ~10 Hz.
+- The firmware sends per-subcarrier amplitudes $\sqrt{I^2+Q^2}$ as compact CSV at ~10 Hz.
 - The backend keeps a 15 s sliding window, selects the subcarrier with the
   strongest spectral peak per physiological band (respiration 0.1-0.5 Hz,
   heart 0.8-2.0 Hz), bandpass-filters it and reports the dominant frequency

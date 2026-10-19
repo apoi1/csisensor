@@ -263,10 +263,10 @@ single explicit topic/pattern when needed.
 | Panel | Quantity | Formula shown (mathtext) |
 | --- | --- | --- |
 | Body row label | presence state, `M_rms`, `sigma_window`, `R_bar`, `d_hat` | text summary |
-| CSI mean amplitude plot | `a_bar(t)` over window | `$\bar{a}(t)=\frac{1}{K}\sum_{k}\|H_k(t)\|$` |
+| CSI mean amplitude plot | `a_bar(t)` over window | `$\bar{a}(t)=\frac{1}{K}\sum_{k}\lvert H_k(t)\rvert$` |
 | Respiration plot | Butterworth-filtered `x(t)`, 0.1–0.5 Hz | `$x(t)$`, band |
 | Heart plot | filtered `x(t)`, 0.8–2.0 Hz | `$x(t)$`, band |
-| Subcarrier heatmap | `20·log10(\|H_k\|+eps)`, subcarrier `k` vs `t` | `$\|H_k\|=\sqrt{I_k^2+Q_k^2}$` |
+| Subcarrier heatmap | $20\,\log_{10}(\lvert H_k\rvert + \epsilon)$, subcarrier $k$ vs $t$ | `$\lvert H_k\rvert=\sqrt{I_k^2+Q_k^2}$` |
 | Spectrogram | `scipy.signal.spectrogram` of `a_bar(t)` with shaded bands | `$X(\tau,f)=\sum_n x[n]\,w[n-\tau]\,e^{-j2\pi fn/N}$` |
 | Motion-energy trace | 10-min `M_rms` history with threshold line | `$M_\mathrm{rms}=\sqrt{\langle b^2(t)\rangle}$`, band 0.5–3.0 Hz |
 

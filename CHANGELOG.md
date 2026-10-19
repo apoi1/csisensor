@@ -5,6 +5,53 @@ Format based on Keep a Changelog (https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (2026-10-18)
+
+- **Public-repository documentation pass**: the explanatory docs are now
+  addressed to any repository visitor, not just the project owner.
+  - **`docs/FIRMWARE-ESP32.md`** (new): the flashed firmware as a system —
+    boot sequence (NVS credentials with `config.h` fallback, every
+    `wifi_csi_config_t` flag explained), runtime architecture (WiFi-task
+    CSI callback that never blocks, FreeRTOS queue, publisher/stats/
+    provisioning tasks), how the lwIP self-ping manufactures the ~10 Hz
+    sampling, the per-packet journey (802.11n frame → I/Q per tone →
+    amplitude → CSV → MQTT topic), the physical meaning of I/Q, the
+    config knob table, the `PROVISION:*` serial protocol, honest design
+    limits, and an ASCII flow diagram.
+  - **`docs/DESKTOP-APP.md`** (new): the desktop app as a system — thread
+    architecture (paho network thread → `Queue(1024)` boundary → Qt event
+    loop, 5 Hz drain / 1 Hz estimate+render cadences), component
+    inventory, the 7-step end-to-end data journey with each guard's
+    rationale, the process lifecycle (fill phase → steady → link
+    expiry → shutdown), panel provenance, the web viewer as a sibling
+    consumer, design decisions and env-config tables, ASCII diagram.
+  - **`docs/HOW-IT-WORKS.md`**: re-addressed to a public audience with
+    mechanism depth (how multipath copies actually sum, how the CSI
+    callback works, how the ping session produces the sampling rate,
+    I/Q as phasor coordinates) plus a **new section 4, "El viaje de una
+    medición"**: the complete imagined journey from the router's emitted
+    frame to the rendered pixel, step by step with deep-dive pointers
+    (sections renumbered 5–9, cross-references updated).
+  - **`docs/SIGNAL-MODELING.md`** §2: physical meaning of I/Q added right
+    after $H_k = I_k + jQ_k$ (in-phase/quadrature projections; length =
+    amplitude, angle = phase; `atan2` as the documented future path).
+
+### Fixed (2026-10-18)
+
+- **Equation audit (GitHub MathJax findings re-check)**: 26 findings fixed
+  across README, DATA-PIPELINE, DEVELOPMENT-TOOLS, PROJECT-ARCHITECTURE
+  and SIGNAL-MODELING — formulas still in code format (backticks or plain
+  fences) converted to proper ```math / `$...$` LaTeX: the DATA-PIPELINE
+  §4 detrend/parabola/SNR/sosfiltfilt pseudo-math blocks, `a_k =
+  √(I²+Q²)`, `|X[k]|`, `d_hat`, `O(N·log N)`, the Butterworth `|H(ω)|`
+  prototype, and the heatmap `20·log10(|H_k|+1e-9)` row; the malformed
+  backtick+math `deque` fragment left by the previous conversion
+  repaired; the orphan fence after the multi-link fusion block removed;
+  `\lvert \rvert` used instead of bare `|` inside math in table cells
+  (GitHub renders bare pipes as cell separators). One factual error the
+  audit surfaced: DATA-PIPELINE said MQTT keepalive 60 s; the firmware
+  sets 30 s (`main.cpp: mqtt_start`).
+
 ### Added (2026-10-14)
 - **NVS runtime provisioning for the ESP32**: the firmware reads WiFi and
   MQTT broker credentials from NVS at boot (falling back to the compiled-in

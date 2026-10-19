@@ -45,13 +45,13 @@ La GUI añade una fila **"Body"** con el estado y métricas en tiempo real:
   - **Ausente:** sala vacía con canal plano de ruido (σ de la amplitud media deslindada < 0.15).
   - **Movimiento:** movimiento corporal grueso (RMS de la banda 0.5–3.0 Hz > 1.5).
   - **En reposo:** persona presente en reposo.
-- **Distancia de enlace:** el RSSI promedio de la ventana se convierte en una estimación de distancia vía modelo log-distance path-loss (`d_hat = d0·10^((R0−R)/(10·n_pl))`). Es la **distancia del enlace** (router ↔ dispositivo), **no coordenadas de la persona**.
+- **Distancia de enlace:** el RSSI promedio de la ventana se convierte en una estimación de distancia vía modelo log-distance path-loss ($\hat{d} = d_0 \cdot 10^{(R_0 - \bar{R})/(10\,n_{pl})}$). Es la **distancia del enlace** (router ↔ dispositivo), **no coordenadas de la persona**.
 - **Paneles físicos** (columna derecha de la grilla 2×3, anotados con fórmulas en mathtext):
-  - Heatmap de subportadoras: `|H_k| = √(I_k² + Q_k²)` en dB.
+  - Heatmap de subportadoras: $\lvert H_k \rvert = \sqrt{I_k^2 + Q_k^2}$ en dB.
   - Espectrograma de la amplitud media de la ventana con bandas fisiológicas sombreadas (respiración 0.1–0.5 Hz, pulso 0.8–2.0 Hz).
   - Traza de energía de movimiento de 10 minutos (`M_rms`) con la línea del umbral de movimiento.
 
-**Limitación física explícita:** se procesan solo amplitudes `|H_k|` de un único par antena/router (sin fase ni antenas múltiples) → no se pueden calcular coordenadas, postura ni ángulo de llegada; la posición del cuerpo se evalúa como clasificación presencia/movimiento + atenuación del enlace. El detalle matemático y las técnicas de calibración están en [docs/SIGNAL-MODELING.md](SIGNAL-MODELING.md).
+**Limitación física explícita:** se procesan solo amplitudes $\lvert H_k \rvert$ de un único par antena/router (sin fase ni antenas múltiples) → no se pueden calcular coordenadas, postura ni ángulo de llegada; la posición del cuerpo se evalúa como clasificación presencia/movimiento + atenuación del enlace. El detalle matemático y las técnicas de calibración están en [docs/SIGNAL-MODELING.md](SIGNAL-MODELING.md).
 
 ## Notas Técnicas para el mantenimiento
 - **Punto crítico:** `vitals_processor.py` hace `sps.detrend` previo a FFT. Si cambias el `fs` (10Hz), ajusta los `band_hz`.

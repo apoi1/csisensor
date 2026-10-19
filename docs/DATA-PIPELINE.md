@@ -18,9 +18,9 @@
 
 | # | Etapa | Tratamiento matemático | Tecnología que lo ejecuta | Por qué esa y no otra |
 |---|---|---|---|---|
-| 0 | **RF/canal** | OFDM: canal `H_k` por subportadora; amplitud `a_k = √(I²+Q²)`; la física (λ≈12,44 cm, multipath, Fresnel) modula `|H_k|` con el temblor del pecho | Radio ESP32-S3 + driver WiFi de **ESP-IDF v5.x** (`esp_wifi_set_csi_rx_cb`); iluminación: **lwIP ping** cada 100 ms → `fs ≈ 10 Hz` | Sin paquetes no hay medición: el ping genera las "fotos" a ritmo fijo. API nativa del IDF (no una herramienta externa) |
+| 0 | **RF/canal** | OFDM: canal $H_k$ por subportadora; amplitud $a_k = \sqrt{I^2+Q^2}$; la física ($\lambda \approx 12{,}44$ cm, multipath, Fresnel) modula $\lvert H_k \rvert$ con el temblor del pecho | Radio ESP32-S3 + driver WiFi de **ESP-IDF v5.x** (`esp_wifi_set_csi_rx_cb`); iluminación: **lwIP ping** cada 100 ms → $f_s \approx 10\ \mathrm{Hz}$ | Sin paquetes no hay medición: el ping genera las "fotos" a ritmo fijo. API nativa del IDF (no una herramienta externa) |
 | 1 | **Empaquetado** (firmware) | CSV ASCII `t_us,rssi,n,seq,a0..a(n-1)`; tópico por dispositivo `esp32/<id>/csi/raw` (id = 3 últimos bytes de la MAC STA, `esp_read_mac` verificado; buffer `snprintf` de 48 B) | **C++/ESP-IDF + esp-mqtt**; `config.h` (`CSI_INTERVAL_MS=100`, `CSI_MAX_SUBCARRIERS=128` — el S3 usa ~64, `K = csi_len/2`) | Un tópico por placa = aislamiento de links desde el transporte; CSV compacto por MQTT |
-| 2 | **Transporte** | Pub/sub sin transformación (QoS 0, keepalive 60 s) | **Mosquitto** (Docker, conf bakeada en build; 1883 TCP, 9001 websockets para clientes futuros) | MQTT desacopla productor/consumidores: el GUI y el viewer son consumidores independientes del mismo broker |
+| 2 | **Transporte** | Pub/sub sin transformación (QoS 0, keepalive 30 s) | **Mosquitto** (Docker, conf bakeada en build; 1883 TCP, 9001 websockets para clientes futuros) | MQTT desacopla productor/consumidores: el GUI y el viewer son consumidores independientes del mismo broker |
 | 3 | **Ingesta** | Parseo + guardias + cola + etiquetado de link + registro por link | **paho-mqtt** (`>=1.6,<2.0` — la API 2.x rompió `Client()`), `queue.Queue(1024)`, `csi_packets.parse_csi_payload`, `link_manager` (lock `threading.Lock`, LRU `MAX_LINKS=16`, expiración `LINK_STALE_S=20`) | La cola desacopla el hilo de red de paho del hilo del consumidor; el contador `dropped` da visibilidad de backpressure sin bloquear la red |
 | 4 | **DSP por link** | Ventana 150×K → detrend → Hann → `rfft` → pico en banda + interpolación parabólica (dominio log) → SNR vs mediana → mejor subportadora por banda → Butterworth banda → tasas + ondas + presencia + distancia | **numpy** (`np.fft.rfft`, `np.hanning`, `deque(maxlen)`), **scipy** (`signal.detrend`, `signal.butter` orden 3 salida SOS, `signal.sosfiltfilt`) | Ver §4: cada decisión matemática con su porqué |
 | 5 | **Fusión multi-link** | Por banda gana el link con mejor SNR (pueden ser links distintos para corazón y respiración); primary = ganador cardíaco; presencia conservadora; RMS = máx entre links | `link_manager.LinkManager.estimate()` / `motion_estimate()` | Dos placas = dos puntos de vista del mismo pecho; gana el que "ve mejor" CADA banda |
@@ -74,7 +74,7 @@ Fila CSV por paquete (`csi_packets.py`, formato verificado):
 | `rssi` | potencia del paquete (dBm, int) | capa MAC |
 | `n` | cantidad de subportadoras de ESTE paquete | `K = csi_len/2` |
 | `seq` | nro. de secuencia del paquete | firmware |
-| `a0..a(n-1)` | amplitudes `√(I²+Q²)` 0..255 | CSI del driver |
+| `a0..a(n-1)` | amplitudes $a_k = \sqrt{I^2+Q^2}$ (0..255) | CSI del driver |
 
 Transporte: `esp32/<id>/csi/raw` (wildcard `esp32/+/csi/raw` +
 tópico plano legacy en el default del backend; `MQTT_TOPIC` explícito
@@ -113,30 +113,34 @@ Archivo: `vitals_processor.py` (verificado línea a línea).
 → ventana nueva (link físicamente distinto). *Por qué: una sola fila
 corrupta envenena media/FFT/heatmap (comentario R1/R4 del propio código).*
 
-**Ventana**: `deque(maxlen = max(16,` $\mathrm{round}(f_s \cdot T_w)$`)) = 150` filas × K
+**Ventana**: un `deque` con `maxlen = max(16, round(fs·Tw))` —
+$N = \max(16,\ \mathrm{round}(f_s \cdot T_w)) = 150$ filas × K
 columnas (10 Hz × 15 s). *Por qué deque: ventana deslizante O(1), sin
 poda manual; por qué 15 s: ~4 ciclos respiratorios y ~15 cardíacos — la
-resolución de la FFT es `Δf = 1/15 s ≈ 0,0667 Hz`.*
+resolución de la FFT es $\Delta f = 1/(15\ \mathrm{s}) \approx 0{,}0667\ \mathrm{Hz}$.*
 
 **Mejor subportadora por banda** (`_best_subcarrier` → `_band_peak`):
+
+```math
+x_k = \mathrm{detrend}(\mathrm{matrix}[:,k]) \quad w = x_k \cdot \mathrm{hanning}(n) \quad S = \lvert \mathrm{rfft}(w) \rvert \quad f = \mathrm{rfftfreq}(n,\ d = 1/f_s) \quad \text{pico} = \mathrm{argmax}\{S[f] : f \in \text{banda}\}
 ```
-x_k = detrend(matrix[:, k])              # scipy.signal.detrend: resta el
-                                          # ajuste lineal → sin deriva DC
-w   = x_k · np.hanning(n)                 # ventana Hann: sin fuga espectral
-S   = |np.fft.rfft(w)|                    # FFT real: mitad de bins, sin espejo
-f   = np.fft.rfftfreq(n, d = 1/fs)
-pico = argmax{ S[f] : f ∈ banda }         # resp (0,1–0,5 Hz) | heart (0,8–2,0)
-```
+
+Con `scipy.signal.detrend` (resta el ajuste lineal → sin deriva DC),
+`np.hanning` (ventana Hann: sin fuga espectral) y `np.fft.rfft` (FFT
+real: mitad de bins, sin espejo). Bandas: **respiración** 0,1–0,5 Hz,
+**corazón** 0,8–2,0 Hz.
+
 Interpolación parabólica **en dominio log** del espectro:
-```
-δ = ½·(ln S[i-1] − ln S[i+1]) / (ln S[i-1] − 2·ln S[i] + ln S[i+1])
-f* = f[pico] + δ·Δf        (solo si |δ| ≤ 1)
+
+```math
+\delta = \frac{\ln S[i-1] - \ln S[i+1]}{2\,(\ln S[i-1] - 2\ln S[i] + \ln S[i+1])} \qquad f^* = f[\text{pico}] + \delta\cdot\Delta f \quad \text{(solo si } \lvert\delta\rvert \le 1\text{)}
 ```
 *Por qué: sin esto, respirar a 0,2 Hz con Δf=0,067 Hz cuantiza a 12 o
 18/min; la parábola recupera precisión sub-bin.*
 **SNR** (compuerta de calidad):
-```
-SNR_k = 20·log10( (pico + ε) / (mediana{S en banda} + ε) ),  ε = 1e-12
+
+```math
+\mathrm{SNR}_k = 20\,\log_{10}\left(\frac{\text{pico} + \epsilon}{\mathrm{mediana}\{S \text{ en banda}\} + \epsilon}\right), \qquad \epsilon = 10^{-12}
 ```
 *Por qué mediana y no media del piso: robusta al propio pico (una media
 se inflaría con el pico). Gana el k con mayor SNR_k — y se REPORTA cuál
@@ -144,9 +148,13 @@ se inflaría con el pico). Gana el k con mayor SNR_k — y se REPORTA cuál
 
 **Ondas mostradas** (`_bandpass`): Butterworth orden 3, salida SOS,
 `sosfiltfilt` (ida y vuelta → **fase cero**):
+
+```math
+\text{resp\_wave} = \mathrm{sosfiltfilt}(\mathrm{butter}(3, [0.1, 0.5], \text{bandpass}, f_s = 10), \mathrm{detrend}(x_r^*))
 ```
-resp_wave  = sosfiltfilt(butter(3, [0.1, 0.5], bandpass, fs=10), detrend(x_r*))
-heart_wave = sosfiltfilt(butter(3, [0.8, 2.0], bandpass, fs=10), detrend(x_h*))
+
+```math
+\text{heart\_wave} = \mathrm{sosfiltfilt}(\mathrm{butter}(3, [0.8, 2.0], \text{bandpass}, f_s = 10), \mathrm{detrend}(x_h^*))
 ```
 *Por qué `sosfiltfilt` y no un filtro común: sin filtrar hacia atrás, el
 filtro IIR DESFASA la onda en el tiempo — las ondas que mostrás quedarían
@@ -156,8 +164,8 @@ numéricamente estable. Por qué orden 3: Butterworth = máximamente plano
 fallback documentado: banda no observable a este `fs` (`hi ≤ lo`) o
 ventana corta → devuelve la señal detrended tal cual.
 
-**Tasas**: `bpm = f*_heart · 60` y `resp/min = f*_resp · 60` — **solo si
-`SNR ≥ 6 dB`** (`CSI_MIN_SNR_DB`); si no, `None` → el GUI muestra `-`.
+**Tasas**: $\mathrm{bpm} = f^*_{\mathrm{heart}} \cdot 60$ y $\mathrm{resp/min} = f^*_{\mathrm{resp}} \cdot 60$ — **solo si
+$\mathrm{SNR} \ge 6\ \mathrm{dB}$** (`CSI_MIN_SNR_DB`); si no, `None` → el GUI muestra `-`.
 *Por qué: sin calidad no hay número — honestidad por diseño.*
 
 **Presencia/movimiento** (`motion_analyzer.py`, verificado):
@@ -190,10 +198,10 @@ es mejor `—` que un número inventado.*
 ```math
 \text{vivos} = \{\text{links}: \text{ahora} - t_\text{ingest} \le 20\text{ s}\} \quad \text{por banda: gana el mayor SNR en ESA banda} \quad \text{primary} = \text{ganador cardíaco}
 ```
-presencia  : Moving si alguno Moving | Still si alguno Still | si no Absent
-RMS        = máx entre links vivos listos
-σ/RSSI/d   : los del primary (o el primero listo)
-```
+
+- **presencia**: `Moving` si alguno `Moving` | `Still` si alguno `Still` | si no `Absent`
+- **RMS**: máx entre links vivos listos
+- **σ / RSSI / d**: los del primary (o el primero listo)
 
 ## 5. Etapa 5 — qué se calcula cuándo
 
@@ -231,14 +239,14 @@ Qt — apto para PyInstaller.*
 
 | Ves en pantalla | Es exactamente | Calculado en | Con qué |
 |---|---|---|---|
-| Trazo "CSI mean amplitude" | `ā(t)` = media de las K amplitudes del primary, t relativo 0–15 s | `VitalsProcessor.current_window()` | numpy `mean(axis=1)` |
+| Trazo "CSI mean amplitude" | $\bar{a}(t)$ = media de las K amplitudes del primary, t relativo 0–15 s | `VitalsProcessor.current_window()` | numpy `mean(axis=1)` |
 | Trazo "Respiration (filtered)" | señal del mejor subcarrier resp, detrended + Butterworth 0,1–0,5 Hz fase cero | `_bandpass(detrend(x_r*))` | scipy `butter`+`sosfiltfilt` |
 | Trazo "Heart (filtered)" | ídem banda 0,8–2,0 Hz | `_bandpass(detrend(x_h*))` | scipy |
-| Número BPM / por-min | `f*·60` de la banda (solo si SNR ≥ 6 dB) | `_band_peak` + interpolación | numpy rfft |
+| Número BPM / por-min | $f^* \cdot 60$ de la banda (solo si SNR ≥ 6 dB) | `_band_peak` + interpolación | numpy rfft |
 | `sc#` y `SNR` del meta | subportadora ganadora y su SNR por banda | `_best_subcarrier` | numpy + mediana |
 | Fila "Body" | estado (σ/RMS), RMS banda 0,5–3 Hz, σ_ventana, RSSI medio, d̂ | `MotionAnalyzer.estimate()` | scipy + modelo PL |
-| Heatmap | `20·log10(|H_k| + 1e-9)` de TODAS las subportadoras del primary | `current_matrix()` → `_redraw_heatmap` | matplotlib imshow |
-| Espectrograma | PSD de `ā` (10·log10), bandas fisiológicas sombreadas | `_redraw_spectrogram` | scipy.spectrogram |
+| Heatmap | $20\,\log_{10}(\lvert H_k \rvert + 10^{-9})$ de TODAS las subportadoras del primary | `current_matrix()` → `_redraw_heatmap` | matplotlib imshow |
+| Espectrograma | PSD de $\bar{a}$ ($10\,\log_{10}$), bandas fisiológicas sombreadas | `_redraw_spectrogram` | scipy.spectrogram |
 | Energía de movimiento | historia 600 s del RMS fusionado + umbral 1.5 | `_motion_history` deque | matplotlib |
 | "links … (primary …)" | registro vivo: ids ordenados + ganador cardíaco | `link_ids()`/`primary_link()` (con lock) | — |
 | Franja de medidas | unidades de TODO lo anterior, siempre visible | estática (`gui.py`) | QLabel |
