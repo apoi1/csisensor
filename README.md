@@ -97,6 +97,55 @@ analyzer, multi-ESP32 link manager (routing, fusion, expiry, locks),
 config surface (env overrides incl. `MQTT_TOPIC`) and the web-viewer
 pipeline.
 
+## Uso en Colombia y monitoreo continuo en hogares del común
+
+Este proyecto está pensado para ser implementado en hogares colombianos, aprovechando la infraestructura Wi‑Fi que ya existe en la mayoría de los hogares del país. El sistema se puede instalar en cualquier vivienda con acceso a una red Wi‑Fi (2.4 GHz recomendado, 5 GHz también soportado) y no requiere hardware adicional más allá del ESP32‑S3, el router y el backend Python.
+
+**Ventajas para el uso en hogares colombianos**
+
+- **Bajo costo:** el ESP32‑S3 y el firmware son de bajo costo y pueden adquirirse sin trámites regulatorios complejos para uso residencial.
+- **Facilidad de despliegue:** la guía de despliegue (`DEPLOYMENT.md`) está escrita en español y contempla pasos prácticos para configurar el router, abrir el firewall (puertos 1883/8080) y colocar el ESP32‑S3 en una toma de corriente dentro del rango del router.
+- **Monitoreo continuo:** el ESP32‑S3 captura CSI a ~10 Hz, envía los datos por MQTT y el backend mantiene una ventana deslizante de 15 s que permite estimar respiración y pulso en tiempo real, renovando la estimación cada segundo. Esto permite observar la evolución de los signos vitales a lo largo del tiempo sin intervención manual.
+- **Privacidad:** el sistema solo procesa la señal de radio; no usa cámaras ni micrófonos, por lo que la privacidad de los residentes está protegida por diseño.
+
+### Esquema de los frames CSV de CSI
+
+Cada paquete MQTT publicado por el ESP32‑S3 contiene una línea CSV con los siguientes campos:
+
+```
+t_us,rssi,n,seq,a0,a1,...,a(n-1)
+```
+
+| Campo | Descripción | Unidad / Formato |
+|-------|-------------|------------------|
+| **t_us** | Timestamp del ESP32‑S3 (microsegundos desde el arranque) | entero (`uint64`) |
+| **rssi** | Potencia del paquete recibida por el ESP32‑S3 | dBm (`int8`, típico -128…0) |
+| **n** | Cantidad de sub‑portadoras que incluye este paquete | entero (`uint16`, ~64) |
+| **seq** | Número de secuencia del paquete (monotónico) | entero (`uint32`) |
+| **a0 … a(n‑1)** | Amplitud de cada sub‑portadora: `round(sqrt(I²+Q²))`, 0‑255 | entero (`uint8`) |
+
+**Ejemplo** (8 sub‑portadoras, `n=8`):
+
+```
+12345678,-62,8,42,15,12,14,13,16,11,13,12
+```
+
+**Parseo en Python** (`backend/csi_packets.py`):
+
+```python
+@dataclass(frozen=True)
+class CsiPacket:
+    t_us: int
+    rssi: int
+    n: int
+    seq: int
+    amps: np.ndarray   # shape (n,), float64
+```
+
+Si el payload no cumple el formato (menos de 4 campos, `n <= 0`, o faltan amplitudes), la función `parse_csi_payload` devuelve `None` y el paquete se descarta; esto evita que una muestra corrupta envenene la ventana deslizante de 15 s.
+
+---
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
