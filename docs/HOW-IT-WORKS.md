@@ -297,7 +297,7 @@ invierte el modelo log-distance para estimar la distancia del enlace:
 calibración, la estimación se apaga (`—`) en vez de inventar metros.
 **Límite honesto**: el *fading* por multipath mete ±5–10 dB de
  dispersión alrededor de esa curva → la distancia es una **brújula, no
-un GPS** (§4 paso 8, `SIGNAL-MODELING.md` §6).
+un GPS** (§5 paso 8, `SIGNAL-MODELING.md` §6).
 
 **Cómo se sostiene la precisión** (qué protege cada mecanismo, todos
 verificables en `config.py` / `link_manager.py` / `vitals_processor.py`):
