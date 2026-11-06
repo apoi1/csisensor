@@ -89,7 +89,7 @@ docs/SIGNAL-MODELING.md.
 
 The desktop GUI (and the measures strip under the canvas) name every
 magnitude and unit explicitly on its axes. Full walkthrough with
-scenario-by-scenario reading: `docs/HOW-IT-WORKS.md` §5 (Spanish).
+scenario-by-scenario reading: `docs/HOW-IT-WORKS.md` §6 (Spanish).
 
 | Panel (position) | Magnitude (y-axis / color) | x-axis | Unit | What to look for |
 |---|---|---|---|---|

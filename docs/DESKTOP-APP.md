@@ -193,7 +193,7 @@ en `_on_tick`).
 ## 5. Qué ve el usuario y de dónde sale
 
 Los paneles son los mismos que describe la guía de lectura de
-[HOW-IT-WORKS.md](HOW-IT-WORKS.md) §5 (y la correspondencia matemática exacta
+[HOW-IT-WORKS.md](HOW-IT-WORKS.md) §6 (y la correspondencia matemática exacta
 está en DATA-PIPELINE §7); esta es la **vista de sistema**: qué componente
 alimenta cada cosa que se ve.
 
