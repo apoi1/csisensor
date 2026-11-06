@@ -217,6 +217,34 @@ $a_k = \lvert H_k \rvert = \sqrt{I_k^2 + Q_k^2}$ — y **descarta el
 distinto del mismo canal: alguna mira el pecho mejor, otra está tapada
 por la heladera, otra solo ve ruido.
 
+#### ¿AM o FM? Las dos modulaciones que conviven (y no hay que confundir)
+
+| Capa | Modulación | Quién la hace |
+|---|---|---|
+| **Datos del paquete WiFi** | **QAM** — cada tono lleva bits en su amplitud *y* su fase (QPSK/16-QAM/64-QAM según la calidad del enlace) | el router, por el estándar 802.11n — no podemos ni debemos tocarla |
+| **Información fisiológica** | **AM — modulación de amplitud lenta**: el pecho, al moverse milímetros, hace que $|H_k|$ suba y baje a 0,1–0,5 Hz (respiración) y 0,8–2,0 Hz (latido) | el cuerpo; la medimos nosotros |
+
+Es un receptor de radio AM en espíritu: el "carrier" es cada tono WiFi y
+el "mensaje" es el temblor del pecho impreso en la **envolvente** de
+$|H_k|$. **No es FM**: no medimos desviaciones de frecuencia de la
+portadora (y la fase, que haría posible un análisis más fino, la
+descartamos). La frecuencia del temblor (respiraciones/min, bpm) se
+recupera después, con la FFT, mirando cuánta energía hay en cada banda.
+
+**De la onda al frame, la cadena exacta**: símbolo OFDM recibido → el
+chip correlaciona el preámbulo de entrenamiento y estima
+$H_k = I_k + jQ_k$ por tono → el firmware calcula
+$a_k = \mathrm{round}(\sqrt{I_k^2+Q_k^2})$ (0–255) y descarta la fase →
+una línea CSV `t_us,rssi,n,seq,a0..a63` por paquete, a ~10 Hz.
+
+**El input exacto del procesamiento**: la ventana deslizante de
+**150 × 64 amplitudes** (15 s a 10 Hz). La discriminación
+respiración/latido no separa orígenes: **separa frecuencias** — cada
+subportadora se transforma con detrend→Hann→FFT y se buscan picos en la
+banda 0,1–0,5 Hz y en la 0,8–2,0 Hz; gana la mejor subportadora *de cada
+banda* (pueden ser distintas). Matemática exacta: `docs/DATA-PIPELINE.md`
+§4.
+
 **Comportamiento esperado** (y es lo que aprovecha el procesamiento):
 
 - La respiración/el latido **mueven todas las subportadoras juntas y al

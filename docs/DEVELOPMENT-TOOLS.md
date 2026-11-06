@@ -23,6 +23,15 @@ Referencia única de: (1) qué herramientas usa cada capa y por qué, (2) la met
 
 ## 1. Metodología de desarrollo
 
+### Convenio de idioma
+
+La documentación se escribe en **español**. Los términos consagrados en la
+literatura se citan **en inglés, sin traducir** — CSI, RSSI, OFDM, FFT, DFT,
+Hann window, spectral leakage, path loss, SNR — y se explican en español la
+primera vez que aparecen. Las referencias y nombres propios (Oppenheim,
+Cooley–Tukey, ESP-IDF) quedan como en la fuente, y los identificadores de
+código (`np.hanning`, `esp_wifi_set_csi_rx_cb`) se escriben siempre literales.
+
 ### ¿ESP-IDF va en WSL o en Windows? ¿Se compila desde un IDE?
 
 - **ESP-IDF se instala dentro de WSL (Ubuntu).** El toolchain de compilación (`xtensa-esp32s3-elf-gcc`, CMake/Ninja, esptool, GDB) es Linux nativo y se instala con `./install.sh esp32s3` del propio IDF.
@@ -179,132 +188,42 @@ Dos limitaciones concretas de esta teoría moldean el código:
 - **Fuga espectral** (*spectral leakage*): si el tono no cae exacto en un bin, su energía se reparte en los bins vecinos → ventana de Hann (paso 3).
 - **Resolución de bin limitada** (`Δf`) → interpolación parabólica `δ` (paso 6).
 
-### 3.4 El pipeline matemático, fórmula por fórmula
+#### ¿Por qué la familia de Fourier y no otra técnica?
 
-#### Paso 1 — Ventana deslizante
-
-```
-N = fs · window_s = 10 Hz · 15 s = 150 muestras
-```
-
-| Variable | Valor | Origen |
+| Alternativa | Qué haría | Por qué se descartó acá |
 |---|---|---|
-| `fs` | 10 Hz | `fs = 1000 / CSI_INTERVAL_MS`, con `CSI_INTERVAL_MS = 100` (`src/esp32/main/config.h`): cada ping/respuesta genera un callback CSI |
-| `window_s` | 15 s | `Config.window_seconds` (`backend/config.py`, env `CSI_WINDOW_S`) |
-| `N` | 150 | producto de los dos anteriores; `VitalsProcessor.capacity = round(fs · window_s)` |
+| Autocorrelación | estimar el período comparando la señal con ella misma retrasada | sin espectro explícito no hay "pico vs piso", y la compuerta de honestidad SNR (paso 7) se queda sin métrica |
+| Wavelets (CWT/DWT) | resolución tiempo-frecuencia simultánea | respiración y latido son cuasi-estacionarios dentro de los 15 s: la resolución extra no aporta y el costo/complejidad sube |
+| Paramétricos (MUSIC/ESPRIT) | super-resolución con pocas muestras | exigen fijar el orden del modelo y son frágiles al ruido de multipath; overkill para dos bandas conocidas |
+| Cruces por cero / contador de picos | contar picos de la onda filtrada | un solo glitch crea o borra un latido; sin métrica de calidad asociada |
+| ML (ver §3.6) | clasificador/regresor entrenado | no hay dataset con verdad de referencia; el problema es detección de tonos en bandas conocidas *a priori* |
 
-Por qué 15 s: el fenómeno más lento a detectar es la respiración a 0.1 Hz → período de 10 s. La ventana debe contener **al menos un período completo** → mínimo 10 s; 15 s dan 1.5 períodos respiratorios y 12–30 períodos cardíacos. Trade-off: ventana más larga → `Δf` más fina, pero la GUI tarda más en reflejar cambios.
+### 3.4 El pipeline matemático: mapa conceptual y autoridad
 
-#### Paso 2 — Detrend (eliminación de DC y deriva)
+> **Consolidación (2026-11-06)**: la derivación fórmula-por-fórmula que vivía
+> acá duplicaba a `docs/DATA-PIPELINE.md` §4. **La fuente autoritativa del DSP
+> es DATA-PIPELINE §4** (matemática exacta con archivo y función citados, en
+> español). Acá queda el mapa conceptual; la teoría de fondo en §3.3 y las
+> referencias en §3.7.
 
-```math
-x'[n] = x[n] - (m n + b)
-```
+| Paso | Qué hace | Por qué esa técnica (función) | Implementación |
+|---|---|---|---|
+| 1 · Ventana deslizante | apila N = fs·15 s = 150 filas de amplitudes | la FFT necesita varios períodos completos del fenómeno más lento (0.1 Hz → ≥10 s); 15 s = 1.5 ciclos respiratorios con latencia asumible | `vitals_processor.py` (`deque(maxlen)`) |
+| 2 · Detrend | resta la recta de mínimos cuadrados `x'[n] = x[n] − (mn+b)` | elimina el DC y la deriva lenta: sin esto el bin 0 satura a sus vecinos y degrada el piso de ruido | `scipy.signal.detrend` |
+| 3 · Ventana de Hann | multiplica por `w[n] = ½(1−cos(2πn/(N−1)))` | la ventana rectangular convoluciona el espectro con un *sinc* cuyo lóbulo lateral está a −13 dB: la respiración "embadurnaría" al latido; Hann baja los lóbulos a −31 dB (18 dB/octava) a costa de ensanchar el lóbulo principal ~2× | `np.hanning(N)` |
+| 4 · FFT (rfft) | `X[k] = Σ x[n]w[n]e^{−i2πkn/N}`, magnitud `\|X[k]\|` | mide cuánta energía hay en cada frecuencia; `Δf = fs/N ≈ 0.067 Hz` fija la resolución cruda | `np.fft.rfft` + `rfftfreq` |
+| 5 · Mejor subportadora por banda | por banda fisiológica, gana la subportadora con mejor SNR de pico | el tórax modula fuerte solo algunos caminos; promediar todas diluye señal con ruido | `vitals_processor.py` |
+| 6 · Interpolación parabólica (δ) | parábola en escala log sobre pico y vecinos; el vértice da `x*` sub-bin | el pico verdadero casi nunca cae en un bin; sin esto el corazón se mediría en escalones de ~4 bpm | `vitals_processor.py` |
+| 7 · Compuerta SNR | `SNR = pico / mediana del piso`; < 6 dB → muestra `-` | honestidad: sin pico que sobresalga del ruido, el número sería una invención | `vitals_processor.py` |
+| 8 · Butterworth orden 3 | pasa-banda adelante y atrás (`sosfiltfilt`) | dibuja la onda **sin desfase**; la *estimación* viene de la FFT, el filtro es para visualizar | `scipy.signal.butter` |
+| 9 · Conversión final | Hz → resp/min y bpm | unidades fisiológicas para la GUI | `vitals_processor.py` |
 
-| Variable | Qué es | Origen |
-|---|---|---|
-| `m`, `b` | pendiente e intercepto de la recta de mínimos cuadrados ajustada a la ventana | `scipy.signal.detrend(x)` (ajuste lineal interno) |
-
-Elimina `C_k` (el DC del modelo de §3.2) y la deriva lenta del canal. Sin esto, la energía del DC satura el bin 0 y sus vecinos, y degrada el piso de ruido de las bandas.
-
-#### Paso 3 — Ventana de Hann
-
-```math
-w[n] = \frac{1}{2}\left(1 - \cos\frac{2\pi n}{N-1}\right), \quad n = 0,\dots,N-1
-```
-
-| Variable | Valor | Origen |
-|---|---|---|
-| `w[n]` | 0 … 1 (0 en los bordes, 1 al centro) | `np.hanning(N)` implementa exactamente esta fórmula |
-
-Por qué: cortar la señal de punta a punta (ventana rectangular) equivale, en frecuencia, a convolucionar el espectro con un *sinc* cuyo primer lóbulo lateral está solo **−13 dB** abajo — la respiración (fuerte) "embadurnaría" al latido (débil), que está apenas una octava arriba. Hann baja los lóbulos laterales a **−31 dB** con caída de 18 dB/octava, al precio de ensanchar el lóbulo principal ~2× (costo asumible porque las bandas fisiológicas están bien separadas).
-
-#### Paso 4 — FFT (la DFT aplicada)
-
-```math
-X[k] = \sum_n x[n]\,w[n]\,e^{-i2\pi kn/N} \quad |X[k]| = \sqrt{\mathrm{Re}^2 + \mathrm{Im}^2}
-```
-
-```math
-f_k = \frac{k\cdot f_s}{N} \quad \Delta f = \frac{f_s}{N} = \frac{10}{150} \approx 0.067\ \mathrm{Hz}
-```
-
-| Variable | Valor | Origen |
-|---|---|---|
-| `k` | 0–75 (rfft de N = 150) | índice del bin; `np.fft.rfftfreq(N, d=1/fs)` devuelve los `f_k` |
-| `X[k]` | magnitud espectral | `np.abs(np.fft.rfft(x·w))` |
-| `Δf` | ≈ 0.067 Hz ⇔ ≈ 4 bpm @ 60 bpm | DFT asume `T = N/fs` como período → bins = armónicos de `f₀ = 1/T` (§3.3) |
-
-`Δf` cruda significa: sin refinamiento, el corazón solo se puede medir en escalones de ~4 bpm. De eso se encarga el paso 6.
-
-#### Paso 5 — Mejor subportadora por banda
-
-Para cada banda fisiológica se recorren las ~64 subcarriers y se retiene la de mayor SNR de pico dentro de la banda (con la métrica del paso 7). Racional: el tórax modula fuerte solo algunos caminos de radio; **promediar todas las subportadoras diluye la señal** con las que solo traen ruido.
-
-#### Paso 6 — Interpolación parabólica del pico (el "delta" `δ`)
-
-Problema: el pico verdadero casi nunca cae exacto en un bin; `Δf ≈ 0.067 Hz` limita la resolución.
-
-Truco: cerca del máximo, el lóbulo en escala logarítmica es casi una parábola (el logaritmo de una campana gaussiana es *exactamente* una parábola). Se ajusta la parábola que pasa por el pico y sus dos vecinos, con `l = ln|X|`:
-
-```math
-\text{puntos: } (-1,\,l_-),\;(0,\,l_0),\;(1,\,l_+) \quad (l_0 = \ln\text{ del bin pico})
-```
-
-```math
-p(x) = ax^2 + bx + c \quad a = \frac{1}{2}(l_- - 2l_0 + l_+) \quad b = \frac{1}{2}(l_+ - l_-) \quad c = l_0
-```
-
-El vértice de una parábola está en `x* = −b/(2a)`, entonces:
-
-```math
-\delta = -\frac{b}{2a} = \frac{\frac{1}{2}(l_- - l_+)}{l_- - 2l_0 + l_+} \quad f_\text{peak} = f[k^*] + \delta\cdot\Delta f
-```
-
-| Variable | Qué es | Origen |
-|---|---|---|
-| `l₀`, `l₋`, `l₊` | logaritmos de las magnitudes del bin pico y sus dos vecinos | espectro del paso 4 |
-| `a`, `b` | coeficientes de la parábola (en un máximo, `a < 0`) | resolver el sistema lineal de los 3 puntos (derivación arriba) |
-| `δ` | desplazamiento sub-bin del vértice, acotado a [−1, +1] | fórmula del vértice `−b/(2a)`; la cota existe porque el pico real debe caer entre los bins vecinos |
-| `f_peak` | frecuencia fina del pico | `f[k*] + δ·Δf` |
-
-Efecto: la resolución pasa de ~4 bpm a **~1 bpm** (por eso el test unitario con 60 bpm sintéticos tolera ±5 bpm con margen). Referencia de la derivación y su justificación en dominio log: J. O. Smith III, *Quadratic Interpolation of Spectral Peaks* (§3.7).
-
-#### Paso 7 — Compuerta de calidad SNR
-
-```math
-\mathrm{SNR}_{\mathrm{dB}} = 20\cdot\log_{10}\!\left(\frac{S_\text{pico}}{S_\text{mediana}}\right)
-```
-
-| Variable | Qué es | Origen |
-|---|---|---|
-| `pico` | máxima magnitud espectral dentro de la banda | paso 4, máximo sobre los bins de la banda |
-| `mediana` | piso de ruido robusto | mediana de las magnitudes dentro de la banda; se usa la mediana y no la media porque la media queda contaminada por el propio pico |
-| el factor `20` | conversión de razón de amplitudes a dB | potencia $\propto \text{amplitud}^2 \Rightarrow 10\,\log_{10}(P/P_0) = 20\,\log_{10}(A/A_0)$ |
-| umbral 6 dB | ⇔ pico ≥ 2× el piso de ruido | `10^(6/20) ≈ 2.0`; configurable con `CSI_MIN_SNR_DB` (`config.py`) |
-
-Si `SNR_dB < 6`, la GUI muestra "-" en lugar de un número basura: mejor no mostrar nada que mostrar ruido.
-
-#### Paso 8 — Filtro Butterworth para graficar (no para estimar)
-
-```math
-\lvert H(\omega) \rvert = \frac{1}{\sqrt{1 + (\omega/\omega_c)^{2n}}} \qquad \text{(prototipo; } n = 3\text{)}
-```
-
-| Variable | Valor | Origen |
-|---|---|---|
-| `n` | 3 (orden del filtro) | código: `sps.butter(3, [lo, hi], …)`; mayor n ⇒ flancos más empinados |
-| `lo`, `hi` | bordes de cada banda | fisiología ÷ 60 (§3.2) |
-| forma `sos` | cascada de secciones de segundo orden | estabilidad numérica (`output='sos'`) |
-| `sosfiltfilt` | filtrado hacia adelante + hacia atrás | respuesta de **fase cero**: la forma de onda mostrada no se distorsiona en el tiempo |
-
-#### Paso 9 — Conversión final
-
-```
-bpm = f_peak · 60            respiraciones/min = f_peak · 60
-```
-
-El `·60` convierte ciclos por segundo (Hz) a eventos por minuto — la misma fórmula que definió las bandas: `banda_Hz = ritmo_por_minuto / 60`.
+**De qué datos exactos parte la discriminación respiración vs latido**: del
+mismo input — la matriz deslizante 150×64 de amplitudes `a_k` que sale de los
+frames CSV. No separa orígenes: **separa frecuencias**. Cada columna
+(subportadora) se transforma con detrend→Hann→rfft y se buscan picos en la
+banda 0.1–0.5 Hz (respiración) y en la 0.8–2.0 Hz (latido); gana la mejor
+subportadora *de cada banda*, que pueden ser distintas (el `sc#` de pantalla).
 
 ### 3.5 Por qué 10 Hz de muestreo
 
@@ -367,54 +286,13 @@ Si algún día hace falta robustez que el DSP puro no da (mucho movimiento, ambi
 
 ---
 
-## 4. Flujo de datos end-to-end (el correcto, código real)
+## 4. Flujo de datos end-to-end
 
-```
-┌─────────────────────── ESP32-S3 (firmware, src/esp32) ───────────────────────┐
-│ esp_ping → gateway (100 ms)  ⇒  llega un frame RX                            │
-│   └─ wifi_csi_rx_cb(): lee csi_buf, calcula a_k = √(I²+Q²)                   │
-│        └─ xQueueSend (FreeRTOS, depth 32)  ← desacopla el callback WiFi      │
-│             └─ publisher_task: arma CSV y esp_mqtt_client_publish()           │
-└────────────────────────────── MQTT topic: esp32/csi/raw ───────────────────────┘
-                                     │  payload: "t_us,rssi,n,seq,a0,...,aN"
-                                     ▼
-              Mosquitto 2.x (contenedor Docker en Windows, puerto 1883)
-                                     │
-                                     ├─ rama paralela (sin Qt): web_viewer.py
-                                     │  (aiohttp, WebSocket) — consumidor paho
-                                     │  propio; snapshot ~1 Hz a cada navegador
-                                     │  (teléfonos) en la LAN
-                                     │
-                                     ▼
-┌────────────────────── Backend Python (Windows, venv) ────────────────────────┐
-│ MultiLinkSubscriber (link_manager.py, hilo de red paho)                      │
-│   suscribe esp32/+/csi/raw + esp32/csi/raw (legacy)                          │
-│   └─ parse_csi_payload() → CsiPacket → queue.Queue(1024), etiquetado         │
-│      como (link_id, packet)  ← desacopla red/consumidores                    │
-│        └─ QTimer de la GUI (5 Hz): links.drain_and_feed() drena la cola      │
-│             └─ LinkManager: VitalsProcessor + MotionAnalyzer por link        │
-│                (pipelines aislados; deque deslizante 150 por link)           │
-│                └─ cada 1 s: estimate()  [§3.4: detrend→Hann→FFT→δ→SNR]       │
-│                     └─ fusión: max SNR por banda, presencia conservadora     │
-│                          └─ PyQt5: grilla 2×3 (trazas + heatmap +            │
-│                             espectrograma + energía de movimiento)           │
-│                             + fila Body + BPM / resp·min⁻¹ + SNR             │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
-
-**Formato del payload** (CSV ASCII, ~64 subportadoras ≈ 450 bytes @ 10 Hz ≈ 4.5 kB/s — trivial para Mosquitto):
-```
-t_us,rssi,n,seq,a0,a1,...,aN
-1717000000123456,-52,64,42,178,176,171,169,...
-```
-
-**Desacoples de threading** (los dos puntos donde el sistema protege la integridad):
-1. Firmware: el callback CSI corre en el contexto de WiFi → pasa todo a una cola FreeRTOS; la publicación MQTT corre en su propia task.
-2. Backend: paho corre su loop en un hilo → solo hace `put_nowait` en una `queue.Queue`; el hilo de la GUI (Qt) drena con `get_nowait`. Nunca se toca Qt desde el hilo de red.
-
-**Verificación sin hardware**: `scripts/simulate_esp32.py` publica exactamente el mismo formato CSV con señales sintéticas (~66 bpm / 18 resp·min⁻¹), para probar toda la cadena menos el ESP32.
-
----
+> **Consolidado**: el flujo etapa por etapa — física → firmware → MQTT →
+> ingesta → DSP → fusión multi-link → render, con el código exacto de cada
+> paso — vive en **`docs/DATA-PIPELINE.md`** (fuente autoritativa). El esquema
+> visual Mermaid está en `docs/HOW-IT-WORKS.md` §0 y el resumen
+> arquitectónico en `docs/PROJECT-ARCHITECTURE.md`.
 
 ## 5. Tecnologías, repositorios y datasets
 

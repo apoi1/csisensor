@@ -1,9 +1,12 @@
 # Arquitectura del Sistema: WiFi-CSI Vital Signs
 
 ## Resumen Ejecutivo
-Pipeline de seguimiento vital (pulso/respiración) mediante WiFi CSI. Utiliza el ruido y desplazamiento de fase en las subportadoras (subcarriers) del protocolo WiFi 802.11n para detectar micro-movimientos torácicos.
+Pipeline de seguimiento vital (pulso/respiración) mediante WiFi CSI. Utiliza la **variación de amplitud** de las subportadoras (subcarriers) del protocolo WiFi 802.11n — el firmware descarta la fase — para detectar los micro-movimientos torácicos que modulan el canal (enfoque AM; ver `docs/HOW-IT-WORKS.md` §2.5).
 
 ## Pipeline de Datos
+
+> Resumen arquitectónico. El detalle etapa por etapa con el código exacto
+> de cada paso vive en **`docs/DATA-PIPELINE.md`** (fuente autoritativa).
 1. **Adquisición (ESP32-S3):** Captura CSI nativa (`esp_wifi_set_csi_rx_cb`). Genera tráfico constante mediante ping (~10Hz) al gateway. Publica en MQTT como CSV `t_us,rssi,n,seq,a0...aN`; cada dispositivo publica en su tópico `esp32/<id>/csi/raw` (id = últimos 3 bytes de la MAC) y el tópico plano `esp32/csi/raw` queda como caso base de un solo dispositivo.
 2. **Transporte:** Mosquitto Broker (Docker).
 3. **Procesamiento (Python):** 

@@ -50,15 +50,15 @@ function Start-RepoWindow {
     param(
         [Parameter(Mandatory)][string]$Title,
         [Parameter(Mandatory)][string]$ScriptRelPath,
-        [string]$Args = ""
+        [string]$ScriptArgs = ""
     )
     $absScript = Join-Path $RepoRoot $ScriptRelPath
     if (-not (Test-Path $absScript)) {
         Write-Error "No existe el script: $absScript"
         return
     }
-    $cmd = "cd `'$RepoRoot`'; python `'$absScript`' $Args"
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", $cmd -Title $Title -WindowStyle Normal
+    $cmd = "`$host.UI.RawUI.WindowTitle = '$Title'; cd '$RepoRoot'; python '$absScript' $ScriptArgs"
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", $cmd -WindowStyle Normal
 }
 
 # ---- 4. Lanzar componentes ----
