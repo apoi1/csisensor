@@ -42,6 +42,8 @@ Leave the room **completely empty** for 5 minutes with everything running
   is producing a fake tone (a fan, an oscillating device): find it or
   move the link. This test is the negative control for every other test.
 
+![The three channel states: resting, moving, empty room — the empty room is noise-flat](img/csi-mean-three-scenarios.png)
+
 ## 3. Controlled-breathing test — the strongest empirical proof
 
 You control the input; if the sensor tracks it, the signal is yours.
@@ -64,6 +66,8 @@ and the vitals reset (the window is re-contaminated by gross motion);
 sit still → `Still` and stabilization within ~15–20 s. A state machine
 that responds to YOUR body — and resets on YOUR movement — is
 sensor-driven by construction.
+
+![Motion RMS over 10 min with the 1.5 threshold: every crossing is one movement](img/motion-rms-threshold.png)
 
 ## 5. Reference comparison — quantitative accuracy
 
@@ -96,3 +100,45 @@ router and subject), subject distance, `CSI_MIN_SNR_DB`, the 5-min empty
 room outcome, metronome readings (both paces), reference pairs if any.
 With that log, any future accuracy work (second node, weighted fusion)
 has a baseline to beat.
+
+## 9. The honest path toward medical-grade claims
+
+> **Read this first.** This project is **not a medical device** — not
+> now, and not by changing a config flag. This section documents what
+> separates today's research prototype from a medical-grade claim, so
+> nobody mistakes ambition for certification.
+
+**What blocks it today** (each is a hard gap, not a TODO comment):
+
+1. **Amplitude-only CSI.** The firmware discards phase (`SIGNAL-MODELING.md`
+   §1); amplitude alone is ~10× less sensitive and cannot disambiguate
+   two people or a fan reliably.
+2. **General-purpose hardware.** An ESP32 radio was never designed or
+   characterized as a physiological front-end (no certified RF chain,
+   no medical-grade clock/AQC specs).
+3. **No ground-truth study.** The tolerances in §5 (±5 bpm / ±3 /min)
+   are engineering gates vs consumer wearables — not agreement measured
+   against ECG/capnography over a study population.
+4. **No calibration per environment.** Every room has different
+   multipath; no per-installation characterization exists.
+
+**The escalation ladder** (each tier presupposes the previous one):
+
+| Tier | Work required | Reference standard / evidence |
+|---|---|---|
+| 1. Sensing upgrades | Use phase + IQ (conjugate-multiplication phase sanitization), multi-antenna or multi-board fusion, per-subcarrier selection hardening | `SIGNAL-MODELING.md` §3 (documented future path) |
+| 2. Ground truth | Blinded simultaneous recording vs **ECG** (heart) and **capnography / respiration belt** (breathing); N ≥ 20–30 subjects across age/BMI; fixed geometry protocol | Preregistered study protocol; ethics/IRB approval |
+| 3. Statistical evidence | Bland–Altman limits of agreement, MAE/RMSE per band, presence sensitivity/specificity, failure-mode catalogue per environment | Peer-reviewed publication or validated internal report |
+| 4. Quality system | Design controls, verification & validation suite, documented risk analysis for the intended use | **ISO 13485** (QMS), **ISO 14971** (risk), **IEC 62304** (software lifecycle) |
+| 5. Regulatory | Classification as SaMD; in Colombia: **INVIMA** registro sanitario; US: FDA 510(k) (contactless vitals are typically Class II); EU: MDR conformity | IMDRF SaMD framework; notified-body / agency review |
+
+**What this repository can honestly claim today:** the falsification
+tests in §2–§6 (empty room, controlled breathing, reference comparison),
+an SNR honesty gate that shows `-` instead of guessing, and engineering
+tolerances vs consumer wearables. **What it cannot claim:** diagnostic
+accuracy, clinical validity, or fitness for any health decision.
+
+**If the goal is a validated research instrument** (not a device):
+tiers 1–3 are enough — publish the protocol, the datasets and the
+agreement analysis, and keep the research-only labeling. Tiers 4–5 are
+a multi-year organizational effort, not a code change.

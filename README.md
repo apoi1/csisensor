@@ -85,6 +85,24 @@ log-distance link-distance estimate (calibratable). Amplitude-only
 single-antenna CSI cannot provide coordinates or angle — see
 docs/SIGNAL-MODELING.md.
 
+## GUI panels — what each graph shows
+
+The desktop GUI (and the measures strip under the canvas) name every
+magnitude and unit explicitly on its axes. Full walkthrough with
+scenario-by-scenario reading: `docs/HOW-IT-WORKS.md` §5 (Spanish).
+
+| Panel (position) | Magnitude (y-axis / color) | x-axis | Unit | What to look for |
+|---|---|---|---|---|
+| 1 · CSI mean (top-left) | mean CSI amplitude ā(t) | t [s], 0–15 | a.u. | Slow breathing wave; a jump = body motion; flat line = empty room |
+| 2 · Respiration (mid-left) | respiration amplitude x(t) | t [s], 0–15 | a.u. | Regular peaks at 12–30/min; title shows winning subcarrier (sc#) and SNR [dB] |
+| 3 · Heart (bottom-left) | heart amplitude x(t) | t [s], 0–15 | a.u. | Small regular peaks (48–120 bpm); first trace to dirty up with motion |
+| 4 · Heatmap (top-right) | y: subcarrier k · color: \|Hₖ\| | t [s] | dB | Bright vertical stripes = good subcarriers; sudden darkening = link blocked |
+| 5 · Spectrogram (mid-right) | y: frequency f · color: X(τ,f) | t [s] | Hz / dB | Stable horizontal stripe at ~0.2–0.3 Hz = respiration; wide blotch = motion |
+| 6 · Motion RMS (bottom-right) | motion RMS M_rms | t [s], 10 min | a.u. | Below red threshold line (1.5) = still; each crossing = one movement |
+
+Units: CSI amplitudes are dimensionless (a.u.); heatmap/spectrogram are
+shown in dB; RSSI in dBm; frequencies in Hz; time in seconds.
+
 ## Tests
 
 ```bash

@@ -228,6 +228,13 @@ dentro de la ventana Qt*.
 | Espectrograma: `scipy.signal.spectrogram(ā, fs, nperseg=min(64,N), noverlap=nperseg//2)` → `10·log10(sxx+1e-12)`, `magma`, `origin=lower` | nperseg 64 ≈ 6,4 s → Δf≈0,156 Hz (resuelve la banda respiratoria); overlap 50% suaviza en tiempo; f crece hacia arriba como un piano |
 | Franja de medidas + ylabels con unidad (2026-10-14) | "qué estoy mirando" en un vistazo; misma unidad que este doc |
 
+Rendimiento esperado de los dos paneles físicos (figuras generadas con
+las constantes reales del sistema por `scripts/generate-doc-figures.py`):
+
+![Heatmap |H_k| [dB]: subportadora k vs tiempo — las franjas verticales brillantes son las subportadoras buenas](img/heatmap-subcarriers.png)
+
+![Espectrograma [dB]: f [Hz] vs tiempo — franja estable a ~0,28 Hz = respiración; mancha ancha = movimiento](img/spectrogram-bands.png)
+
 **Web viewer** (`web_viewer.py`, aiohttp + `web_static/` JS vainilla):
 el MISMO `LinkManager` vía accessors con lock; hilo de feed a 1 s; tiles
 (BPM, resp/min, Body, distancia) + tendencia de 10 min + últimas ondas

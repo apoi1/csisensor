@@ -13,6 +13,64 @@
 
 ---
 
+## 0. Esquema visual del sistema (pipeline end-to-end)
+
+```mermaid
+flowchart LR
+    subgraph Fisico["Físico"]
+        Router[("Router WiFi\n2.4 GHz OFDM")]
+        Person(("Pecho\nrespira / late"))
+    end
+    subgraph Sensado["Sensado"]
+        ESP32["ESP32-S3\nestima H_k por subportadora\nfs ≈ 10 Hz"]
+    end
+    subgraph Transporte["Transporte"]
+        MQTT(("Mosquitto\n:1883"))
+    end
+    subgraph Backend["Backend Python"]
+        Parse["parseo + guardias\n(NaN, n, t_us)"]
+        Win["ventana deslizante\n150 × 64 (15 s @ 10 Hz)"]
+        Mean["promedio ā(t)\n= (1/K)·Σ|H_k|"]
+        Sel["mejor subportadora\npor banda (SNR)"]
+        Filt["filtro pasa-banda\nresp 0.1–0.5 · corazón 0.8–2.0 Hz"]
+        FFT["FFT + pico →\nresp/min · BPM · SNR gate"]
+        Mot["RMS 0.5–3 Hz →\nAbsent / Still / Moving"]
+    end
+    subgraph Vista["Visualización"]
+        GUI["GUI PyQt5 · 6 paneles"]
+        Web["web viewer LAN\nhttp://IP:8080"]
+    end
+    Router -->|"señal rebota"| Person
+    Person -->|"multipath modula |H_k|"| ESP32
+    ESP32 -->|"MQTT CSV esp32/<id>/csi/raw"| MQTT
+    MQTT --> Parse --> Win --> Mean
+    Win --> Sel --> Filt --> FFT
+    Mean --> Mot
+    FFT --> GUI
+    Mot --> GUI
+    Mean --> GUI
+    GUI ~~~ Web
+```
+
+**Distribución de los 6 paneles del GUI** (izquierda: trazas temporales
+de la señal; derecha: vistas físicas; franja inferior: medidas):
+
+```text
+┌──────────────────────────────┬──────────────────────────────┐
+│ 1 CSI medio ā(t)     [a.u.]  │ 4 Heatmap |H_k|       [dB]   │
+│   x: t [s] 0–15              │   x: t [s] · y: subcarrier k │
+├──────────────────────────────┼──────────────────────────────┤
+│ 2 Respiración x(t)   [a.u.]  │ 5 Espectrograma X(τ,f) [dB]  │
+│   banda 0.1–0.5 Hz           │   x: t [s] · y: f [Hz]       │
+├──────────────────────────────┼──────────────────────────────┤
+│ 3 Corazón x(t)       [a.u.]  │ 6 Motion RMS M_rms    [a.u.] │
+│   banda 0.8–2.0 Hz           │   banda 0.5–3 Hz · 10 min    │
+└──────────────────────────────┴──────────────────────────────┘
+  Body: Still · motion RMS · σ_window · RSSI [dBm] · dist [m]
+```
+
+---
+
 ## 1. La idea en una frase
 
 > **El WiFi de tu casa es una linterna invisible que rebota en todo — y
@@ -72,6 +130,8 @@ literalmente, una huella digital de la geometría de la sala.
 > milímetro, la imagen compuesta cambia. Si el "espejo" es el pecho de
 > una persona respirando, la imagen tiembla 12–30 veces por minuto.
 
+![El canal: camino directo + ecos multipath y la zona de Fresnel donde el pecho es medible](img/multipath-fresnel.png)
+
 ### 2.3 El pecho: el "espejo" que nos interesa
 
 - **Respiración**: el pecho se desplaza algunos milímetros a ~1 cm,
@@ -126,6 +186,24 @@ su **longitud** es la amplitud y su **ángulo** es la fase. El chip
 reporta esas coordenadas para **cada tono por separado** (hasta 128; el
 S3 usa **~64** en la práctica, `K = csi_len/2`).
 
+#### Qué papel cumple OFDM en cada etapa
+
+OFDM no es algo que este proyecto implemente: es el **esquema de
+modulación del estándar WiFi** (802.11n). Lo que hacemos es
+*explotarlo* — su estructura es la que hace posible medir signos
+vitales con una placa de ~10 USD:
+
+| Etapa | Qué hace OFDM ahí | Qué aprovecha este proyecto |
+|---|---|---|
+| **Modulación / envío** (router) | Reparte los bits del paquete entre ~64 subportadoras ortogonales (cada tono con su QPSK/16-QAM/64-QAM) y antepone un **preámbulo con símbolos de entrenamiento conocidos** | Sin OFDM habría un único tono → una sola vista del canal. Las 64 subportadoras son 64 "cámaras" apuntando a la misma sala |
+| **Recepción** (ESP32-S3) | El chip correlaciona el preámbulo conocido contra lo recibido y estima el canal **por subportadora**: $H_k = I_k + jQ_k$ — eso es literalmente la CSI que el driver entrega al callback | Nuestro firmware solo toma ese reporte y publica $a_k = \sqrt{I_k^2+Q_k^2}$; la estimación de canal OFDM ya la hace el hardware |
+| **Procesamiento** (backend) | La ortogonalidad mantiene los tonos independientes entre sí: la señal fisiológica modula **todos** los tonos juntos (coherente) y el ruido de cada tono es **independiente** | El promedio §5-paso 1 gana √64 ≈ 8× de SNR; y §5-paso 3 puede elegir la subportadora con mejor vista del pecho por banda |
+| **Robustez del enlace** | Si un tono cae en una frecuencia con interferencia, los demás siguen llevando datos (el router los baja de modulación) | Si una subportadora "ve la heladera", otra ve el pecho: de ahí el `sc#` que se muestra en pantalla |
+
+En una frase: **OFDM convierte un canal de 20 MHz en 64 sensores
+paralelos; el router lo usa para enviar datos, y nosotros leemos cómo
+el pecho deformó esos 64 sensores.**
+
 Eso es la **CSI**: por cada paquete, un vector de ~64 pares $(I_k, Q_k)$.
 El firmware calcula la longitud de cada flecha —
 $a_k = \lvert H_k \rvert = \sqrt{I_k^2 + Q_k^2}$ — y **descarta el
@@ -142,6 +220,27 @@ por la heladera, otra solo ve ruido.
   *coherente*).
 - El ruido de cada subportadora es **independiente** (cada tono sufre
   su propio ruido) → al promediar, el ruido se cancela y la señal queda.
+
+### 2.6 Las propiedades de la onda, tal como las ves en pantalla
+
+Toda gráfica del sistema es una onda en el tiempo, y toda onda se
+describe con las mismas tres propiedades. Es importante leerlas bien
+porque significan cosas físicas distintas acá:
+
+![Anatomía de una onda: amplitud, período T y frecuencia f=1/T, y su lectura como signo vital](img/wave-anatomy.png)
+
+| Propiedad | Qué es en la gráfica | Qué significa físicamente en este sistema |
+|---|---|---|
+| **Amplitud** [a.u.] | cuánto sube y baja la curva respecto a su línea media | cuánto perturba el cuerpo al canal WiFi. **No** está calibrada en mm ni en watts: es adimensional. Sirve para *presencia y calidad*, no para "cuánto te expandís" |
+| **Período T** [s] | cuánto tarda un ciclo completo (pico a pico) | un ciclo = una respiración completa (o un latido). T ≈ 4 s → respiración lenta; T ≈ 0,8 s → latido |
+| **Frecuencia f = 1/T** [Hz] | ciclos por segundo | lo que el sistema reporta como tasa: `60/T` da respiraciones/min o bpm. La banda 0,1–0,5 Hz = 12–30/min; la banda 0,8–2,0 Hz = 48–120 bpm |
+
+Por eso la app dibuja **dos cosas distintas con ondas**: las trazas de
+la izquierda son la onda *en el tiempo* (amplitud vs t), y el
+espectrograma de la derecha es la onda *en frecuencia* (qué f están
+presentes). Y por eso el número confiable del sistema es la **frecuencia**
+(el ritmo), no la amplitud: la amplitud depende de la geometría del
+enlace, el ritmo no.
 
 ---
 
@@ -174,6 +273,41 @@ las amplitudes CSI son **adimensionales** (un número que el chip
 entrega, sin watts ni voltios); el heatmap y el espectrograma las
 convierten a **dB** para que quepa todo en pantalla; RSSI va en
 **dBm**; las frecuencias en **Hz**; el tiempo en **s**.
+
+### 3.1 Cómo se mide cada magnitud física — y cómo se sostiene la precisión
+
+**RSSI** (Received Signal Strength Indicator): es la **potencia total
+con la que llegó el paquete completo**, medida por el front-end de
+radio del ESP32 (las lecturas de ganancia/energía del receptor) y
+reportada por el chip **por paquete, en dBm**. No es por subportadora
+(eso es $|H_k|$): es el "volumen total" del paquete. El backend lo
+**promedia sobre la ventana** para estabilizarlo y, si está calibrado,
+invierte el modelo log-distance para estimar la distancia del enlace:
+
+![Modelo RSSI → distancia: PL(d) logarítmico con punto de calibración](img/rssi-distance-model.png)
+
+`PL(d) = PL(d₀) + 10·n_pl·log₁₀(d/d₀)` con constantes
+`CSI_RSSI_REF_DBM`, `CSI_REF_DISTANCE_M`, `CSI_PATH_LOSS_N`. Sin
+calibración, la estimación se apaga (`—`) en vez de inventar metros.
+**Límite honesto**: el *fading* por multipath mete ±5–10 dB de
+ dispersión alrededor de esa curva → la distancia es una **brújula, no
+un GPS** (§4 paso 8, `SIGNAL-MODELING.md` §6).
+
+**Cómo se sostiene la precisión** (qué protege cada mecanismo, todos
+verificables en `config.py` / `link_manager.py` / `vitals_processor.py`):
+
+| Mecanismo | Qué precisión protege |
+|---|---|
+| Ping cada 100 ms (`CSI_INTERVAL_MS`) | muestreo **constante a fs ≈ 10 Hz**: sin ritmo fijo, la FFT no tiene escala de tiempo confiable |
+| Guardias de `t_us` (NaN/inf, retrocesos) | que un timestamp corrupto no estire ni comprima la ventana |
+| Guardia de ancho `n` fijo | que una fila con otra cantidad de subportadoras no desalinee la matriz 150×K |
+| Cola + contador `dropped` | backpressure visible sin bloquear la red: si se pierde, se sabe |
+| `detrend` + ventana de Hann | que los bordes de la ventana no "sangren" energía falsa al espectro |
+| `sosfiltfilt` (adelante y atrás) | filtrado **sin desfase**: los picos quedan alineados con la señal real |
+| Compuerta SNR ≥ 6 dB (`CSI_MIN_SNR_DB`) | honestidad: sin pico que sobresalga del piso, se muestra `-` |
+| Interpolación parabólica del pico | resolución sub-bin: la tasa no queda atrapada en la rejilla de la FFT |
+| Fusión multi-link por mejor SNR + expiración 20 s | que una placa tapada no gane por inercia; gana la mejor vista viva |
+| Estimación a 1 Hz + mediana de 5–10 lecturas | estabilidad de lectura (protocolo §1 del VALIDATION-PROTOCOL) |
 
 ---
 
@@ -314,6 +448,8 @@ salto brusco; la sala vacía es casi una línea con ruido fino. Si esta
 gráfica está muerta-planilla, nada de lo que sigue va a funcionar —
 mirá el pkt/s en la barra de estado.
 
+![Panel 1 en los tres escenarios: resting, moving, absent](img/csi-mean-three-scenarios.png)
+
 **2. Respiración `x(t)` — banda 0,1–0,5 Hz [a.u.]**
 La misma señal, ya filtrada a la banda respiratoria. *Cómo leerla*:
 contá los picos — cada pico es una respiración (una cada 2–10 s es
@@ -327,6 +463,8 @@ necesita quietud y distancia corta (0,5–2 m). Picos regulares =
 latidos; el número grande arriba es el BPM. Si hay movimiento, esta
 traza se ensucia primero.
 
+![Paneles 2 y 3 con las propiedades de la onda anotadas: picos, período T, tasa y razón de amplitudes](img/vitals-annotated.png)
+
 ### Derecha — los 3 paneles físicos (1 Hz)
 
 **4. Heatmap de subportadoras $|H_k|$ [dB]**
@@ -334,6 +472,8 @@ Todas las subportadoras a la vez (y = subportadora, x = tiempo, color =
 amplitud). *Cómo leerla*: las franjas verticales más claras son las
 subportadoras "buenas" — las que el paso 3 elige. Si todo el panel se
 oscurece de golpe, algo tapó el enlace.
+
+![Heatmap de 64 subportadoras: las franjas verticales brillantes son las que "ven" el pecho](img/heatmap-subcarriers.png)
 
 **5. Espectrograma `X(τ,f)` [dB]**
 El contenido de frecuencia de $\bar{a}(t)$ a lo largo del tiempo. *Cómo
@@ -343,11 +483,15 @@ respiración dibujada en el tiempo; la franja resaltada en verde/rojo
 son las bandas fisiológicas que el sistema usa. Un movimiento = mancha
 ancha que sube y baja.
 
+![Espectrograma con las bandas fisiológicas sombreadas y el efecto de un movimiento](img/spectrogram-bands.png)
+
 **6. Energía de movimiento `M_rms` [a.u.]**
 La banda 0,5–3 Hz en el tiempo (10 min de historia), con la línea roja
 del umbral (`CSI_MOVING_RMS`, 1.5). *Cómo leerla*: por debajo de la
 línea = quieto; cada pico que la cruza = un movimiento; el Body row
 cambia a `Moving` exactamente cuando la traza cruza esa línea.
+
+![Motion RMS de 10 min con el umbral 1.5: los cruces son movimientos](img/motion-rms-threshold.png)
 
 ### La fila "Body" y la barra de meta
 `Body: Still | motion 0.42 RMS | σ_window 0.31 | RSSI -52 dBm | link dist ~1.0 m`
