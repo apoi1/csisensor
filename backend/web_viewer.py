@@ -17,6 +17,7 @@ import json
 import logging
 import threading
 import time
+import webbrowser
 from collections import deque
 from dataclasses import replace
 from pathlib import Path
@@ -225,9 +226,13 @@ def main() -> int:
     feed.start()
 
     app = build_app(state)
+    url = "http://{0}:{1}".format(args.host, args.port)
     logger.info("web viewer listening on http://%s:%d (broker %s:%d, topics %s)",
                 args.host, args.port, cfg.mqtt_host, cfg.mqtt_port,
                 ", ".join(cfg.topic_patterns))
+    # Open the default browser once so the user lands straight in the live page.
+    threading.Thread(target=lambda: webbrowser.open(url), daemon=True,
+                     name="web-viewer-browser").start()
     try:
         web.run_app(app, host=args.host, port=args.port, print=None)
     finally:
