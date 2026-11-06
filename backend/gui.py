@@ -89,8 +89,8 @@ class VitalsWindow(QMainWindow):
         # looking at, at a glance (2026-10-14 request; see the measures
         # strip below the canvas and docs/HOW-IT-WORKS.md).
         self.ax_raw.set_ylabel("mean CSI amplitude [a.u.]")
-        self.ax_resp.set_ylabel("filtered amplitude [a.u.]")
-        self.ax_heart.set_ylabel("filtered amplitude [a.u.]")
+        self.ax_resp.set_ylabel("respiration amplitude [a.u.]")
+        self.ax_heart.set_ylabel("heart amplitude [a.u.]")
         self.ax_motion.set_ylabel("motion RMS [a.u.]")
         # Fixed time axes: every window/wave series is expressed relative to
         # its own window start, so x is always [0, window_seconds]. Pinning
