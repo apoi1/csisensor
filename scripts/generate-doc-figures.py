@@ -329,6 +329,155 @@ def fig_rssi_distance():
     save(fig, "rssi-distance-model.png")
 
 
+# --------------------------------------------------- 9. CSI frame anatomy
+def fig_csi_frame():
+    """One CSV frame dissected: fields, units, and who consumes each one."""
+    fig, ax = plt.subplots(figsize=(9.2, 4.4))
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 10)
+    ax.axis("off")
+
+    fields = [
+        ("t_us", 13, "#4a90d9", "1717000000123456", "\u00b5s since boot"),
+        ("rssi", 9, "#2aa876", "-52", "dBm"),
+        ("n", 6, "#8e44ad", "64", "count"),
+        ("seq", 8, "#e67e22", "42", "monotonic"),
+    ]
+    x = 2.0
+    label_y, value_y, unit_y = 8.4, 6.9, 6.1
+    for name, w, c, val, unit in fields:
+        ax.add_patch(plt.Rectangle((x, 7.4), w, 1.3, fc=c, alpha=0.25, ec=c, lw=1.2))
+        ax.text(x + w / 2, label_y, name, ha="center", fontsize=9, weight="bold", color=c)
+        ax.text(x + w / 2, value_y, val, ha="center", fontsize=7.5, color="#333")
+        ax.text(x + w / 2, unit_y, unit, ha="center", fontsize=6.5, color="#777")
+        x += w + 1.0
+    # payload a0..a63
+    pw = (96.0 - x) / 10.0
+    ax.add_patch(plt.Rectangle((x, 7.4), 96.0 - x + 2.0, 1.3, fc="#c0392b",
+                               alpha=0.18, ec="#c0392b", lw=1.2))
+    for i in range(10):
+        ax.text(x + pw * (i + 0.5), label_y, f"a{i}", ha="center", fontsize=7,
+                color="#c0392b", weight="bold")
+    ax.text(x + (96.0 - x) / 2, value_y, "178, 176, 171, 169, \u2026 (64 values)",
+            ha="center", fontsize=7.5, color="#333")
+    ax.text(x + (96.0 - x) / 2, unit_y, r"$a_k=\mathrm{round}(\sqrt{I^2+Q^2})$, 0–255, a.u.",
+            ha="center", fontsize=6.5, color="#777")
+    ax.text(50, 9.6, "One CSI frame = one \"photo\" of the WiFi channel — ~10 per second",
+            ha="center", fontsize=10, weight="bold")
+
+    # who consumes what
+    consumers = [
+        ("t_us", "window ordering +\ncorruption guards", 8.5),
+        ("rssi", "window average →\nRSSI→distance model", 21.5),
+        ("n", "fixed-width guard\n(150×K matrix)", 36.0),
+        ("seq", "drop / reorder\ndetection", 48.5),
+        ("a0..a63", r"$\bar{a}(t)$, heatmap,\nbest-subcarrier selection", 72.0),
+    ]
+    for name, role, cx in consumers:
+        ax.annotate("", xy=(cx, 4.9), xytext=(cx, 7.3),
+                    arrowprops=dict(arrowstyle="->", color="#999", lw=1.0))
+        ax.text(cx, 4.2, role, ha="center", va="top", fontsize=7, color="#555")
+    ax.text(50, 1.6, "consumed by the backend (docs/DATA-PIPELINE.md §2–§4)",
+            ha="center", fontsize=8, style="italic", color="#555")
+    ax.text(50, 0.4, "t_us,rssi,n,seq,a0,a1,...,a(n-1)  →  1717000000123456,-52,64,42,178,176,171,169,...",
+            ha="center", fontsize=7.5, family="monospace",
+            bbox=dict(boxstyle="round,pad=0.3", fc="#f5f5f5", ec="#bbb"))
+    ax.set_title("Section 3 — Anatomy of a CSI CSV frame and the destination of each field",
+                 fontsize=10)
+    fig.tight_layout()
+    save(fig, "csi-frame-anatomy.png")
+
+
+# ------------------------------------------------- 10. OFDM in the waves
+def fig_ofdm_subcarriers():
+    """64 orthogonal tones in frequency + the per-tone amplitude the chip reports."""
+    rng = np.random.default_rng(21)
+    k = np.arange(K)
+    freqs = (k - K / 2) * (20.0 / K)                # MHz, ~312.5 kHz spacing
+    # room envelope: frequency-selective fading, with deep fades and good tones
+    envelope = 10 ** ((-6.0
+                       + 3.5 * np.sin(2 * np.pi * k / 37)
+                       + 2.0 * np.sin(2 * np.pi * k / 13 + 1.1)
+                       + rng.normal(0, 0.8, K).cumsum() * 0.05) / 20)
+    envelope[18] *= 0.08                             # deep fade
+    envelope[41] *= 0.10
+    good = [12, 23, 40, 55]
+    wiggle = 1.0 + 0.25 * np.sin(2 * np.pi * 0.28 * 0)  # chest effect (all tones, coherent)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8.0, 5.0))
+
+    colors = ["#c0392b" if envelope[i] < 0.35 else ("#2aa876" if i in good else "#4a90d9")
+              for i in range(K)]
+    ax1.vlines(freqs, 0, envelope, color=colors, lw=0.9, alpha=0.8)
+    ax1.scatter(freqs, envelope, c=colors, s=14, zorder=5)
+    ax1.plot(freqs, envelope, color="#333", lw=0.8, alpha=0.4)
+    ax1.axvspan(-10, 10, color="#4a90d9", alpha=0.05)
+    ax1.text(-9.3, envelope.max() * 0.95, "20 MHz channel, 64 orthogonal tones\n"
+             "(\u0394f ≈ 312.5 kHz)", fontsize=7.5, va="top")
+    ax1.annotate("deep fade: this tone\n\"sees the fridge\"", xy=(freqs[18], envelope[18]),
+                 xytext=(-6.5, envelope.max() * 0.55), fontsize=7.5, color="#c0392b",
+                 arrowprops=dict(arrowstyle="->", color="#c0392b", lw=1))
+    ax1.annotate("good tone: clear view\nof the chest (coherent\nwith the others)",
+                 xy=(freqs[23], envelope[23]), xytext=(2.5, envelope.max() * 0.8),
+                 fontsize=7.5, color="#2aa876",
+                 arrowprops=dict(arrowstyle="->", color="#2aa876", lw=1))
+    ax1.set_xlabel("frequency [MHz] (channel center = 0)")
+    ax1.set_ylabel(r"$|H_k|$ [linear]")
+    ax1.set_title("OFDM in the wave modeling: the room carves the envelope; the chest\n"
+                  "modulates ALL tones together (that coherence is what the average exploits)")
+
+    ak = np.round(envelope / envelope.max() * 200).astype(int)
+    ak[ak > 255] = 255
+    ax2.bar(k, ak, color=colors, width=0.8)
+    ax2.set_xlabel("subcarrier index k")
+    ax2.set_ylabel(r"$a_k$ [a.u., 0–255]")
+    ax2.set_title("What the chip reports and the frame carries: a₀…a₆₃ = one CSV line\n"
+                  "(this vector IS the CSI payload of the frame anatomy figure)")
+    fig.tight_layout()
+    save(fig, "ofdm-subcarriers.png")
+
+
+# ------------------------------------------------- 11. sample round trip
+def fig_ping_roundtrip():
+    """Sequence view: ping out, reply back, CSI published, chain to the screens."""
+    fig, ax = plt.subplots(figsize=(9.0, 4.8))
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 10)
+    ax.axis("off")
+
+    lanes = [("Router\n(2.4 GHz OFDM)", 12, "#333"),
+             ("ESP32-S3\n(receiver)", 38, "#4a90d9"),
+             ("Mosquitto\nMQTT :1883", 64, "#8e44ad"),
+             ("Backend →\nGUI / web", 89, "#2aa876")]
+    for name, x, c in lanes:
+        ax.plot([x, x], [8.6, 1.2], color=c, lw=1.0, alpha=0.5)
+        ax.text(x, 9.15, name, ha="center", fontsize=8.5, color=c, weight="bold")
+
+    def seq(y, x0, x1, text, color, below=False):
+        ax.annotate("", xy=(x1, y), xytext=(x0, y),
+                    arrowprops=dict(arrowstyle="->", color=color, lw=1.4))
+        ax.text((x0 + x1) / 2, y - 0.32 if below else y + 0.18, text,
+                ha="center", fontsize=7.5, color=color)
+
+    seq(7.6, 38, 12, "1 · ping request (every 100 ms, USE_TRAFFIC_PING)", "#333")
+    seq(6.5, 12, 38, "2 · ping reply = the \"flash\": chip estimates H_k = I + jQ per tone", "#4a90d9", below=True)
+    seq(5.4, 38, 64, "3 · one CSV line published: t_us,rssi,n,seq,a0..a63", "#8e44ad")
+    seq(4.3, 64, 89, "4 · window 150 × 64 → DSP → rates / presence", "#2aa876")
+
+    # repetition brace: the round trip repeats ~10x/s
+    ax.annotate("", xy=(12, 2.6), xytext=(38, 2.6),
+                arrowprops=dict(arrowstyle="<->", color="#666", lw=1.0, ls="--"))
+    ax.text(25, 2.05, "one round trip = one sample\n→ fs ≈ 10 Hz (10 photos/s)",
+            ha="center", fontsize=7.5, color="#555")
+    ax.text(64, 2.3, "MQTT decouples: GUI and phone viewer subscribe\nto the same stream independently",
+            ha="center", fontsize=7.5, color="#8e44ad")
+    ax.text(50, 0.4, "t = 0 ms ── 100 ms ── 200 ms ── …  each tick leaves a row in the 15 s window (150 rows)",
+            ha="center", fontsize=7.5, family="monospace", color="#777")
+    ax.set_title("Sections 2.4 / etapa 1–2 — Round trip of one sample: it is sent, it comes back,\n"
+                 "it is measured, published and rendered", fontsize=10)
+    fig.tight_layout()
+    save(fig, "ping-roundtrip.png")
+
+
 if __name__ == "__main__":
     print("Generating documentation figures -> docs/img/")
     fig_wave_anatomy()
@@ -339,4 +488,7 @@ if __name__ == "__main__":
     fig_motion_rms()
     fig_multipath()
     fig_rssi_distance()
+    fig_csi_frame()
+    fig_ofdm_subcarriers()
+    fig_ping_roundtrip()
     print("Done.")

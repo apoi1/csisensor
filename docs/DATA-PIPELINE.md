@@ -80,6 +80,8 @@ Transporte: `esp32/<id>/csi/raw` (wildcard `esp32/+/csi/raw` +
 tópico plano legacy en el default del backend; `MQTT_TOPIC` explícito
 reemplaza la lista — contrato restaurado 2026-10-14; `--topic` CLI gana).
 
+![Viaje de ida y vuelta de un muestreo: ping → respuesta → CSI → MQTT → backend → pantallas](img/ping-roundtrip.png)
+
 ## 3. Etapa 3 — ingesta: guardias, cola, links
 
 **`parse_csi_payload`** (`csi_packets.py`): ASCII → ints → `amps` float64;

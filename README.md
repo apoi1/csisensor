@@ -148,6 +148,8 @@ t_us,rssi,n,seq,a0,a1,...,a(n-1)
 12345678,-62,8,42,15,12,14,13,16,11,13,12
 ```
 
+![Anatomía de un frame CSI y el destino de cada campo en el backend](img/csi-frame-anatomy.png)
+
 **Parseo en Python** (`backend/csi_packets.py`):
 
 ```python

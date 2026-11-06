@@ -173,6 +173,8 @@ firmware **genera su propia luz**: una sesión de ping al gateway
 recibida dispara una foto → **fs ≈ 10 Hz**: 10 "fotos del canal" por
 segundo (el mecanismo completo, en `docs/FIRMWARE-ESP32.md` §4).
 
+![Viaje de ida y vuelta de un muestreo: ping sale, la respuesta vuelve y se mide, se publica por MQTT y llega a pantalla](img/ping-roundtrip.png)
+
 ### 2.5 OFDM: los 64 "colores" del flash
 
 Un paquete WiFi moderno (802.11n, OFDM) no es un solo tono: viaja en
@@ -199,6 +201,8 @@ vitales con una placa de ~10 USD:
 | **Recepción** (ESP32-S3) | El chip correlaciona el preámbulo conocido contra lo recibido y estima el canal **por subportadora**: $H_k = I_k + jQ_k$ — eso es literalmente la CSI que el driver entrega al callback | Nuestro firmware solo toma ese reporte y publica $a_k = \sqrt{I_k^2+Q_k^2}$; la estimación de canal OFDM ya la hace el hardware |
 | **Procesamiento** (backend) | La ortogonalidad mantiene los tonos independientes entre sí: la señal fisiológica modula **todos** los tonos juntos (coherente) y el ruido de cada tono es **independiente** | El promedio §5-paso 1 gana √64 ≈ 8× de SNR; y §5-paso 3 puede elegir la subportadora con mejor vista del pecho por banda |
 | **Robustez del enlace** | Si un tono cae en una frecuencia con interferencia, los demás siguen llevando datos (el router los baja de modulación) | Si una subportadora "ve la heladera", otra ve el pecho: de ahí el `sc#` que se muestra en pantalla |
+
+![Los 64 tonos OFDM en frecuencia: la sala esculpe el envolvente, el pecho modula todos juntos; abajo, el vector a_k que lleva el frame](img/ofdm-subcarriers.png)
 
 En una frase: **OFDM convierte un canal de 20 MHz en 64 sensores
 paralelos; el router lo usa para enviar datos, y nosotros leemos cómo
@@ -267,6 +271,8 @@ consume el aplicativo — `docs/DESKTOP-APP.md` §3.)*
 | `n` | cuántas subportadoras trae | — |
 | `seq` | número de secuencia del paquete | — |
 | `a0..a(n-1)` | amplitud de cada subportadora: $a_k = \sqrt{I^2+Q^2}$ | adimensional ("a.u.") |
+
+![Anatomía de un frame CSV de CSI y el destino de cada campo en el backend](img/csi-frame-anatomy.png)
 
 **Unidades, de una vez** (las mismas que ahora ves en los ejes del GUI):
 las amplitudes CSI son **adimensionales** (un número que el chip
