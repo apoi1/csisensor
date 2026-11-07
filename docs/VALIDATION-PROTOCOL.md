@@ -1,144 +1,151 @@
-# Validation Protocol — proving the sensor reads a body, not noise
+# Protocolo de validación — demostrar que el sensor lee un cuerpo, no ruido
 
-Why this document exists: the displayed estimates fluctuate, rooms are
-noisy, and a fair question is *"how do I make the readings more stable,
-and how do I empirically justify that they come from a person and not
-from ambient noise?"* This protocol is the empirical answer: a sequence
-of falsifiable tests. If the system passes them, the signal is yours.
+> Términos acuñados en la literatura se citan en inglés sin traducir (CSI,
+> RSSI, SNR); la prosa es en español.
 
-Companion docs: SIGNAL-MODELING.md (the physics and the processing
-chain), DEPLOYMENT.md section 10 (live test procedure).
+Por qué existe este documento: las estimaciones mostradas fluctúan, las
+salas son ruidosas, y una pregunta justa es *"¿cómo hago las lecturas más
+estables, y cómo justifico empíricamente que vienen de una persona y no del
+ruido ambiente?"*. Este protocolo es la respuesta empírica: una secuencia de
+tests falsables. Si el sistema los pasa, la señal es tuya.
 
-## 1. Setup for stability (do this before every measurement)
+Documentos compañeros: `SIGNAL-MODELING.md` (la física y la cadena de
+procesamiento), `DEPLOYMENT.md` §10 (procedimiento de test en vivo).
 
-1. **Geometry first.** The measured radio link is **board ↔ router** —
-   the subject perturbs THAT line, not the board alone. Sit 0.5–2 m from
-   the board with the straight line board→router passing close to your
-   torso (first Fresnel zone, SIGNAL-MODELING.md section 3), in line of
-   sight, no walls or large metal objects in between.
-2. **Environment.** No other people or pets moving in the room, no
-   fans/oscillating devices, keep some distance from microwaves and
-   other 2.4 GHz sources.
-3. **Time and averaging.** Sit still for at least 60 s. Treat each
-   reading as the **median of the last 5–10 displayed estimates** —
-   single-second readings are samples, not the measurement.
-4. **Honesty gate.** Raise the SNR gate to reject marginal windows:
-   `set CSI_MIN_SNR_DB=9` before launching the GUI/viewer (default 6).
-   A "-" in the display is information; a fluctuating number from a
-   below-gate window is noise dressed as data.
-5. **Reference floor.** If the SNR shown in the status meta line stays
-   below ~9–10 dB, reposition (move the board, change the link geometry)
-   instead of trusting a marginal window.
+## 1. Setup para estabilidad (hacer antes de cada medición)
 
-## 2. Falsification test — the empty room (noise cannot fake vitals)
+1. **Geometría primero.** El enlace de radio medido es **placa ↔ router** —
+   el sujeto perturba ESA línea, no la placa sola. Sentate a 0,5–2 m de la
+   placa con la línea recta placa→router pasando cerca de tu torso (primera
+   zona de Fresnel, `SIGNAL-MODELING.md` §3), con línea de vista, sin paredes
+   ni objetos metálicos grandes en el medio.
+2. **Ambiente.** Ninguna otra persona o mascota moviéndose en la sala, sin
+   ventiladores/dispositivos oscilantes, con distancia de microondas y otras
+   fuentes de 2.4 GHz.
+3. **Tiempo y promediado.** Sentate quieto al menos 60 s. Tratá cada lectura
+   como la **mediana de las últimas 5–10 estimaciones mostradas** — las
+   lecturas de un segundo son muestras, no la medición.
+4. **Compuerta de honestidad.** Subí la compuerta SNR para rechazar ventanas
+   marginales: `set CSI_MIN_SNR_DB=9` antes de lanzar el GUI/viewer
+   (default 6). Un `-` en pantalla es información; un número fluctuante de
+   una ventana por debajo de la compuerta es ruido disfrazado de dato.
+5. **Piso de referencia.** Si el SNR mostrado en la línea de meta se mantiene
+   debajo de ~9–10 dB, reposicioná (mové la placa, cambiá la geometría del
+   enlace) en vez de confiar en una ventana marginal.
 
-Leave the room **completely empty** for 5 minutes with everything running
-(board powered, broker, GUI).
+## 2. Test de falsificación — la sala vacía (el ruido no puede fingir signos vitales)
 
-- Expected: `Body: Absent`, both rates showing "-" (the window fills but
-  the in-band SNR stays below the gate — an empty room's channel is
-  noise-flat).
-- Record the outcome. If vitals appear in an empty room, the environment
-  is producing a fake tone (a fan, an oscillating device): find it or
-  move the link. This test is the negative control for every other test.
+Dejá la sala **completamente vacía** durante 5 minutos con todo corriendo
+(placa encendida, broker, GUI).
 
-![The three channel states: resting, moving, empty room — the empty room is noise-flat](img/csi-mean-three-scenarios.png)
+- Esperado: `Body: Absent`, ambas tasas mostrando `-` (la ventana se llena
+  pero el SNR en banda queda debajo de la compuerta — el canal de una sala
+  vacía es ruido plano).
+- Registrá el resultado. Si aparecen signos vitales en una sala vacía, el
+  ambiente está produciendo un tono falso (un ventilador, un dispositivo
+  oscilante): encontralo o mové el enlace. Este test es el control negativo
+  de todos los demás.
 
-## 3. Controlled-breathing test — the strongest empirical proof
+![Los tres estados del canal: resting, moving, sala vacía — la sala vacía es ruido plano](img/csi-mean-three-scenarios.png)
 
-You control the input; if the sensor tracks it, the signal is yours.
+## 3. Test de respiración controlada — la prueba empírica más fuerte
 
-1. Set a metronome app to 6 breaths/min (5 s inhale, 5 s exhale) and
-   breathe following it for 2 minutes.
-2. Expected reading: **~6 /min** within the documented ±3 tolerance.
-3. Change the metronome to 12 breaths/min and breathe for another 2 min.
-4. Expected: the displayed respiration **follows the change** to ~12/min.
+Vos controlás la entrada; si el sensor la sigue, la señal es tuya.
 
-This is a phase-lock between a known physiological input and the
-measurement — noise has no reason to follow your metronome. The ±3/min
-tolerance is the same spec the synthetic unit tests enforce
-(tests encode 60 bpm / 15 per min ± their gates).
+1. Poné una app de metrónomo en 6 respiraciones/min (5 s inhalar, 5 s
+   exhalar) y respirá siguiéndola durante 2 minutos.
+2. Lectura esperada: **~6 /min** dentro de la tolerancia documentada ±3.
+3. Cambiá el metrónomo a 12 respiraciones/min y respirá otros 2 minutos.
+4. Esperado: la respiración mostrada **sigue el cambio** hasta ~12/min.
 
-## 4. Movement-response test
+Es un phase-lock entre una entrada fisiológica conocida y la medición — el
+ruido no tiene razón para seguir tu metrónomo. La tolerancia ±3/min es la
+misma spec que imponen los tests unitarios sintéticos (los tests codifican
+60 bpm / 15 resp/min ± sus compuertas).
 
-Walk around for a few seconds → the `Body` row must switch to `Moving`
-and the vitals reset (the window is re-contaminated by gross motion);
-sit still → `Still` and stabilization within ~15–20 s. A state machine
-that responds to YOUR body — and resets on YOUR movement — is
-sensor-driven by construction.
+## 4. Test de respuesta al movimiento
 
-![Motion RMS over 10 min with the 1.5 threshold: every crossing is one movement](img/motion-rms-threshold.png)
+Caminá unos segundos → la fila `Body` debe pasar a `Moving` y los signos
+vitales se resetean (la ventana se recontamina con movimiento grueso);
+sentate quieto → `Still` y estabilización en ~15–20 s. Una máquina de estados
+que responde a TU cuerpo — y se resetea con TU movimiento — es
+sensor-driven por construcción.
 
-## 5. Reference comparison — quantitative accuracy
+![Motion RMS de 10 min con el umbral 1.5: cada cruce es un movimiento](img/motion-rms-threshold.png)
 
-Run a simultaneous reference during a 5-min still period:
+## 5. Comparación con referencia — precisión cuantitativa
 
-- Phone pulse oximeter / smartwatch / chest strap (any of them).
-- Write down pairs (reference, system) once per minute for 5 minutes.
-- Expected: heart within **±5 bpm** and respiration within **±3/min**
-  (the tolerances the test suite encodes).
+Corré una referencia simultánea durante un período quieto de 5 minutos:
 
-## 6. Repeatability
+- Pulsioxímetro de teléfono / smartwatch / correa pectoral (cualquiera).
+- Anotá pares (referencia, sistema) una vez por minuto durante 5 minutos.
+- Esperado: corazón dentro de **±5 bpm** y respiración dentro de **±3/min**
+  (las tolerancias que codifica la suite de tests).
 
-Repeat section 3 (or 5) **three times** in the same setup. Consistent
-results within tolerance = the measurement is reproducible; drifting
-results = the link geometry is unstable (back to section 1).
+## 6. Repetibilidad
 
-## 7. Reading fluctuation honestly
+Repetí la §3 (o la §5) **tres veces** en el mismo setup. Resultados
+consistentes dentro de tolerancia = la medición es reproducible; resultados
+a la deriva = la geometría del enlace es inestable (volver a §1).
 
-- Real physiology fluctuates: ±2–3 bpm beat-to-beat variation is normal.
-- Ambient noise ADDS variance; it does not create sustained in-band
-  tones that track your breathing (section 3) or vanish when you leave
-  (section 2).
-- The tools for stability are geometry, the SNR gate, and median
-  averaging — in that order of impact.
+## 7. Leer la fluctuación con honestidad
 
-## 8. What to record (the experiment log)
+- La fisiología real fluctúa: ±2–3 bpm de variación latido-a-latido es
+  normal.
+- El ruido ambiente AGREGA varianza; no crea tonos sostenidos en banda que
+  sigan tu respiración (§3) ni desaparezcan cuando salís (§2).
+- Las herramientas para la estabilidad son geometría, compuerta SNR y
+  promediado por mediana — en ese orden de impacto.
 
-For each session note: date/time, room, board position (relative to
-router and subject), subject distance, `CSI_MIN_SNR_DB`, the 5-min empty
-room outcome, metronome readings (both paces), reference pairs if any.
-With that log, any future accuracy work (second node, weighted fusion)
-has a baseline to beat.
+## 8. Qué registrar (el log de experimentos)
 
-## 9. The honest path toward medical-grade claims
+Para cada sesión anotá: fecha/hora, sala, posición de la placa (relativa al
+router y al sujeto), distancia del sujeto, `CSI_MIN_SNR_DB`, el resultado de
+los 5 min de sala vacía, lecturas del metrónomo (ambos ritmos), pares de
+referencia si los hubo. Con ese log, cualquier trabajo futuro de precisión
+(segundo nodo, fusión ponderada) tiene una línea de base que superar.
 
-> **Read this first.** This project is **not a medical device** — not
-> now, and not by changing a config flag. This section documents what
-> separates today's research prototype from a medical-grade claim, so
-> nobody mistakes ambition for certification.
+## 9. El camino honesto hacia claims de grado médico
 
-**What blocks it today** (each is a hard gap, not a TODO comment):
+> **Leer esto primero.** Este proyecto **no es un dispositivo médico** — ni
+> ahora, ni cambiando un flag de configuración. Esta sección documenta qué
+> separa al prototipo de investigación de hoy de un claim de grado médico,
+> para que nadie confunda ambición con certificación.
 
-1. **Amplitude-only CSI.** The firmware discards phase (`SIGNAL-MODELING.md`
-   §1); amplitude alone is ~10× less sensitive and cannot disambiguate
-   two people or a fan reliably.
-2. **General-purpose hardware.** An ESP32 radio was never designed or
-   characterized as a physiological front-end (no certified RF chain,
-   no medical-grade clock/AQC specs).
-3. **No ground-truth study.** The tolerances in §5 (±5 bpm / ±3 /min)
-   are engineering gates vs consumer wearables — not agreement measured
-   against ECG/capnography over a study population.
-4. **No calibration per environment.** Every room has different
-   multipath; no per-installation characterization exists.
+**Qué lo bloquea hoy** (cada ítem es una brecha dura, no un comentario TODO):
 
-**The escalation ladder** (each tier presupposes the previous one):
+1. **CSI solo de amplitud.** El firmware descarta la fase
+   (`SIGNAL-MODELING.md` §1); la amplitud sola es ~10× menos sensible y no
+   puede desambiguar de forma confiable a dos personas o un ventilador.
+2. **Hardware de propósito general.** Una radio ESP32 nunca fue diseñada ni
+   caracterizada como front-end fisiológico (sin cadena RF certificada, sin
+   specs médicas de clock/AQC).
+3. **Sin estudio de verdad de referencia.** Las tolerancias de §5
+   (±5 bpm / ±3 /min) son compuertas de ingeniería contra wearables de
+   consumo — no concordancia medida contra ECG/capnografía sobre una
+   población de estudio.
+4. **Sin calibración por ambiente.** Cada sala tiene multipath distinto; no
+   existe caracterización por instalación.
 
-| Tier | Work required | Reference standard / evidence |
+**La escalera** (cada peldaño presupone el anterior):
+
+| Peldaño | Trabajo requerido | Estándar de referencia / evidencia |
 |---|---|---|
-| 1. Sensing upgrades | Use phase + IQ (conjugate-multiplication phase sanitization), multi-antenna or multi-board fusion, per-subcarrier selection hardening | `SIGNAL-MODELING.md` §3 (documented future path) |
-| 2. Ground truth | Blinded simultaneous recording vs **ECG** (heart) and **capnography / respiration belt** (breathing); N ≥ 20–30 subjects across age/BMI; fixed geometry protocol | Preregistered study protocol; ethics/IRB approval |
-| 3. Statistical evidence | Bland–Altman limits of agreement, MAE/RMSE per band, presence sensitivity/specificity, failure-mode catalogue per environment | Peer-reviewed publication or validated internal report |
-| 4. Quality system | Design controls, verification & validation suite, documented risk analysis for the intended use | **ISO 13485** (QMS), **ISO 14971** (risk), **IEC 62304** (software lifecycle) |
-| 5. Regulatory | Classification as SaMD; in Colombia: **INVIMA** registro sanitario; US: FDA 510(k) (contactless vitals are typically Class II); EU: MDR conformity | IMDRF SaMD framework; notified-body / agency review |
+| 1. Mejoras de sensado | Usar fase + IQ (saneamiento de fase por multiplicación conjugada), fusión multi-antena o multi-placa, endurecimiento de la selección por subportadora | `SIGNAL-MODELING.md` §3 (camino futuro documentado) |
+| 2. Verdad de referencia | Registro simultáneo a ciegas vs **ECG** (corazón) y **capnografía / banda respiratoria** (respiración); N ≥ 20–30 sujetos de distintas edades/IMC; protocolo de geometría fija | Protocolo de estudio pre-registrado; aprobación de ética/IRB |
+| 3. Evidencia estadística | Límites de concordancia Bland–Altman, MAE/RMSE por banda, sensibilidad/especificidad de presencia, catálogo de modos de falla por ambiente | Publicación con peer-review o reporte interno validado |
+| 4. Sistema de calidad | Controles de diseño, suite de verificación y validación, análisis de riesgo documentado para el uso previsto | **ISO 13485** (QMS), **ISO 14971** (riesgo), **IEC 62304** (ciclo de vida de software) |
+| 5. Regulatorio | Clasificación como SaMD; en Colombia: registro sanitario **INVIMA**; EE.UU.: FDA 510(k) (los signos vitales sin contacto son típicamente Clase II); UE: conformidad MDR | Marco IMDRF SaMD; revisión de organismo notificado / agencia |
 
-**What this repository can honestly claim today:** the falsification
-tests in §2–§6 (empty room, controlled breathing, reference comparison),
-an SNR honesty gate that shows `-` instead of guessing, and engineering
-tolerances vs consumer wearables. **What it cannot claim:** diagnostic
-accuracy, clinical validity, or fitness for any health decision.
+**Lo que este repositorio puede claim-ear honestamente hoy:** los tests de
+falsificación de §2–§6 (sala vacía, respiración controlada, comparación con
+referencia), una compuerta de honestidad SNR que muestra `-` en vez de
+adivinar, y tolerancias de ingeniería contra wearables de consumo. **Lo que
+no puede claim-ear:** precisión diagnóstica, validez clínica o aptitud para
+cualquier decisión de salud.
 
-**If the goal is a validated research instrument** (not a device):
-tiers 1–3 are enough — publish the protocol, the datasets and the
-agreement analysis, and keep the research-only labeling. Tiers 4–5 are
-a multi-year organizational effort, not a code change.
+**Si el objetivo es un instrumento de investigación validado** (no un
+dispositivo): los peldaños 1–3 alcanzan — publicar el protocolo, los datasets
+y el análisis de concordancia, manteniendo el rotulado de solo-investigación.
+Los peldaños 4–5 son un esfuerzo organizacional de años, no un cambio de
+código.

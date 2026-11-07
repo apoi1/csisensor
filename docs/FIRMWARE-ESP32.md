@@ -12,6 +12,20 @@
 > consume estas mediciones). Es una herramienta de investigación; no es un
 > dispositivo médico.
 
+**Mapa de responsabilidades** — qué NO está acá (evita duplicación entre docs):
+
+| Si buscás… | Está en |
+|---|---|
+| Física del canal, zonas de Fresnel, por qué la fase se descarta | `SIGNAL-MODELING.md` (autoridad) |
+| Las 6 etapas del sistema y las matemáticas del DSP (**autoridad**) | `DATA-PIPELINE.md` |
+| Qué es una subportadora y el rol de OFDM (guía simple, con figuras) | `HOW-IT-WORKS.md` §2.5 |
+| Anatomía del frame CSV y destino de cada campo | `HOW-IT-WORKS.md` §3 (`img/csi-frame-anatomy.png`) |
+| Compilado y flasheo paso a paso | `DEPLOYMENT.md` |
+
+Este documento aporta solo la **vista del firmware**: secuencia de arranque,
+tareas/colas/callbacks, la sesión de ping, el viaje del dato dentro del chip,
+`config.h`, provisioning y límites de implementación.
+
 ---
 
 ## 1. Qué es este firmware y su función en el sistema

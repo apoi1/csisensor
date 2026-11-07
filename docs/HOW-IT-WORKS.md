@@ -191,6 +191,17 @@ segundo (el mecanismo completo, en `docs/FIRMWARE-ESP32.md` §4).
 
 ### 2.5 OFDM: los 64 "colores" del flash
 
+> **¿Qué es exactamente una subportadora?** Una subportadora es **uno de los
+> tonos sinusoidales individuales** en los que se divide el canal WiFi: un
+> seno puro de una frecuencia precisa dentro de los 20 MHz. En OFDM, en vez
+> de mandar todo por un solo tono, el paquete se reparte entre ~64 a la vez
+> (ortogonales: no se interfieren entre sí). **Cada subportadora cruza la
+> misma sala por su propia frecuencia**, y por eso cada una devuelve su
+> propia medición de cómo está el canal: $H_k = I_k + jQ_k$. Son 64
+> "termómetros" apuntando a la misma habitación desde 64 ángulos
+> electromagnéticos distintos — alguna mira el pecho de lleno, otra lo ve de
+> costado, otra solo ve la heladera.
+
 Un paquete WiFi moderno (802.11n, OFDM) no es un solo tono: viaja en
 decenas de **subportadoras** — tonos equiespaciados dentro del canal de
 20 MHz, como un acorde con ~64 notas. Para cada nota, el receptor la
@@ -602,5 +613,5 @@ links y cuál es el primary (el que gana el corazón).
 | Calibrar presencia/movimiento y RSSI | `docs/SIGNAL-MODELING.md` §6 |
 | El protocolo de validación empírica | `docs/VALIDATION-PROTOCOL.md` |
 | Cómo desplegarlo paso a paso | `DEPLOYMENT.md` |
-| La arquitectura del pipeline y el stack | `docs/PROJECT-ARCHITECTURE.md` |
+| La arquitectura del pipeline y el stack | `docs/DATA-PIPELINE.md` (autoridad) y `README.md` |
 | El inventario de funciones del GUI | `docs/SIGNAL-MODELING.md` §9 |

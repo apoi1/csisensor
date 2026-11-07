@@ -1,62 +1,68 @@
-# Contributing to sensorproject
+# Contribuir a sensorproject
 
-Research/educational WiFi-CSI vital-signs project. **Not a medical device** —
-keep experimental claims out of user-facing copy.
+Proyecto de signos vitales por WiFi-CSI, de investigación/educación. **No es
+un dispositivo médico** — mantener los claims experimentales fuera del texto
+de cara al usuario.
 
-## Development setup
+> Términos acuñados se citan en inglés sin traducir (CSI, RSSI, MQTT, broker,
+> venv); la prosa es en español.
 
-- Firmware (ESP32-S3): ESP-IDF v5.x on WSL — `DEPLOYMENT.md` §3–6.
+## Setup de desarrollo
+
+- Firmware (ESP32-S3): ESP-IDF v5.x en WSL — `DEPLOYMENT.md` §3–6.
 - Broker: `docker compose up -d` — `DEPLOYMENT.md` §2.
-- Backend/GUI: Python venv on Windows — `DEPLOYMENT.md` §8.
-- Headless dry-run without hardware:
+- Backend/GUI: venv de Python en Windows — `DEPLOYMENT.md` §8.
+- Dry-run headless sin hardware:
   `python scripts/simulate_esp32.py --scenario {resting,moving,absent}`.
-- Phone view while developing: `python backend/web_viewer.py` — §9.
+- Vista en el teléfono mientras desarrollás: `python backend/web_viewer.py` — §9.
 
-## Before every change
+## Antes de cada cambio
 
 ```console
 cd backend
-python -m pytest tests -q          # full suite must pass (currently 50 tests)
-python -m py_compile <touched>.py
+python -m pytest tests -q          # la suite completa debe pasar (hoy 50 tests)
+python -m py_compile <tocado>.py
 ```
 
-## Workflow
+## Flujo de trabajo
 
-1. One branch per feature: `feature/<name>`; keep `master` always releasable.
-2. Small, self-contained commits (Conventional Commits): `feat:`, `fix:`,
-   `docs:`, `test:`, `chore:`. Tests and docs travel with the behavior they
-   cover — never a "docs catch-up" commit after the fact.
-3. Keep the DSP modules import-light: `vitals_processor`, `motion_analyzer`,
-   `csi_packets`, `link_manager` and `web_viewer` must not import Qt, so
-   they stay testable headless (WSL has no PyQt5). Only `gui.py` and
-   `main.py` touch the GUI.
-4. Update `DEPLOYMENT.md` / `README.md` / `docs/` in the same unit of work
-   when behavior, interfaces or commands change.
-5. New runtime dependencies go into `backend/requirements.txt` with a lower
-   bound (and an upper bound where the API is known-breaking, e.g.
+1. Una rama por feature: `feature/<nombre>`; `master` siempre liberable.
+2. Commits chicos y autocontenidos (Conventional Commits): `feat:`, `fix:`,
+   `docs:`, `test:`, `chore:`. Los tests y los docs viajan con el
+   comportamiento que cubren — nunca un commit de "puesta al día de docs"
+   después de hecho.
+3. Mantener los módulos DSP con imports livianos: `vitals_processor`,
+   `motion_analyzer`, `csi_packets`, `link_manager` y `web_viewer` no deben
+   importar Qt, así siguen siendo testeables headless (WSL no tiene PyQt5).
+   Solo `gui.py` y `main.py` tocan la GUI.
+4. Actualizar `DEPLOYMENT.md` / `README.md` / `docs/` en la misma unidad de
+   trabajo cuando cambien comportamiento, interfaces o comandos.
+5. Las dependencias nuevas de runtime van a `backend/requirements.txt` con
+   cota inferior (y cota superior cuando la API se sabe rota, p. ej.
    `paho-mqtt>=1.6,<2.0`).
 
-## Maintenance
+## Mantenimiento
 
-- **Versioning**: tag releases from `master` as `vMAJOR.MINOR.PATCH`
-  (`git tag -a v0.1.0 -m "first tagged release"`); `CHANGELOG.md` records
-  every released change.
-- **Issues**: bugs and advisory findings live as issues, not as TODO
-  comments. Findings from native reviews keep their IDs (e.g.
-  `R3-viewer-lock`) so the trail survives.
-- **Secrets**: never commit credentials. `src/esp32/main/config.h` ships
-  `CHANGE_ME` placeholders only; API keys and broker credentials stay
-  outside the repo.
-- **Docs accuracy**: `docs/DEVELOPMENT-TOOLS.md` §5.3 lists the current test
-  count — keep it in sync whenever tests are added.
-- **Firmware conventions**: WiFi/MQTT credentials live in `config.h` as
-  `CHANGE_ME` placeholders — never commit real values. CSI capture stays on
-  the native ESP-IDF `esp_wifi_set_csi_rx_cb` API, and the ~10 Hz
-  traffic-ping sampling stays toggleable via `USE_TRAFFIC_PING`.
+- **Versionado**: taggear releases desde `master` como `vMAJOR.MINOR.PATCH`
+  (`git tag -a v0.1.0 -m "first tagged release"`); `CHANGELOG.md` registra
+  cada cambio liberado.
+- **Issues**: los bugs y hallazgos de advisories viven como issues, no como
+  comentarios TODO. Los hallazgos de las reviews nativas conservan su ID
+  (p. ej. `R3-viewer-lock`) para que la trazabilidad sobreviva.
+- **Secretos**: nunca commitear credenciales. `src/esp32/main/config.h` se
+  distribuye solo con placeholders `CHANGE_ME`; las API keys y credenciales
+  del broker quedan fuera del repo.
+- **Exactitud de docs**: `docs/DEVELOPMENT-TOOLS.md` §5.3 lista la cantidad
+  actual de tests — mantenerla en sync cada vez que se agreguen tests.
+- **Convenciones del firmware**: las credenciales WiFi/MQTT viven en
+  `config.h` como placeholders `CHANGE_ME` — nunca commitear valores reales.
+  La captura CSI se queda en la API nativa `esp_wifi_set_csi_rx_cb` de
+  ESP-IDF, y el muestreo por traffic-ping a ~10 Hz sigue siendo
+  conmutable vía `USE_TRAFFIC_PING`.
 
-## Reporting bugs
+## Reportar bugs
 
-Open an issue with: the scenario (`resting`/`moving`/`absent`/live), what
-the Body row and the vitals tiles showed, the broker setup, and the
-`docker compose logs mosquitto` tail. Screenshots of the GUI or the phone
-page help.
+Abrir un issue con: el escenario (`resting`/`moving`/`absent`/en vivo), qué
+mostraban la fila Body y los tiles de signos vitales, el setup del broker, y
+el tail de `docker compose logs mosquitto`. Screenshots del GUI o de la
+página del teléfono ayudan.

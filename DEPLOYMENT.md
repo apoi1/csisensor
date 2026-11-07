@@ -1,91 +1,96 @@
-# Deployment Guide - ESP32-S3 WiFi-CSI Vital Signs
+# Guía de despliegue — ESP32-S3 WiFi-CSI Vital Signs
 
-End-to-end setup for the pipeline:
+> Términos acuñados se citan en inglés sin traducir (CSI, RSSI, MQTT, broker,
+> firewall, venv); la prosa es en español. Comandos verbatim.
+
+Setup end-to-end del pipeline:
 
 ```
-ESP32-S3 ──(MQTT: esp32/csi/raw)──► Mosquitto (Docker Desktop, Windows) ◄── Python backend + PyQt5 GUI (Windows)
+ESP32-S3 ──(MQTT: esp32/csi/raw)──► Mosquitto (Docker Desktop, Windows) ◄── backend Python + GUI PyQt5 (Windows)
 ```
 
-> **Disclaimer**: research/experimental. Not a medical device.
+> **Aviso**: investigación/experimental. No es un dispositivo médico.
 
-## Layer split
+## Reparto de capas
 
-| Layer | Where | What runs |
+| Capa | Dónde | Qué corre |
 |---|---|---|
-| Windows | Docker Desktop | Mosquitto broker (port 1883) |
-| Windows | Python 3.10+ venv in `backend/` | subscriber + FFT processor + PyQt5 GUI |
-| WSL (Ubuntu) | ESP-IDF v5.3.x | firmware build, flash, monitor (via usbipd-win) |
+| Windows | Docker Desktop | broker Mosquitto (puerto 1883) |
+| Windows | venv Python 3.10+ en `backend/` | suscriptor + procesador FFT + GUI PyQt5 |
+| WSL (Ubuntu) | ESP-IDF v5.3.x | build, flash y monitor del firmware (vía usbipd-win) |
 
-## 1. Prerequisites
+## 1. Requisitos previos
 
-- Windows 10/11 with **WSL2** (Ubuntu 22.04+, **fish shell** — WSL commands in this guide use fish syntax)
-- **Docker Desktop** for Windows (WSL2 integration enabled)
-- **Python 3.10+** on Windows (python.org installer, "Add to PATH")
-- ESP32-S3 dev board with a USB cable (data-capable)
-- A **2.4 GHz** WiFi network (the ESP32-S3 does not see 5 GHz)
+- Windows 10/11 con **WSL2** (Ubuntu 22.04+, **shell fish** — los comandos WSL de esta guía usan sintaxis fish)
+- **Docker Desktop** para Windows (integración WSL2 habilitada)
+- **Python 3.10+** en Windows (instalador de python.org, "Add to PATH")
+- Placa de desarrollo ESP32-S3 con cable USB (con datos)
+- Una red WiFi de **2.4 GHz** (la ESP32-S3 no ve 5 GHz)
 
-> **WiFi is NOT internet.** The system needs a WiFi **access point**
-> (a router, a hotspot, anything that creates a local network) — it
-> does NOT need internet. The entire pipeline (ESP32 to MQTT to
-> backend to GUI to web viewer) runs on the local network: zero bytes
-> reach the WAN. If the venue has no WiFi, a phone hotspot works (it
-> creates a local network without spending mobile data — the phone's
-> radio acts as a mini router; connected devices talk to each other
-> locally). The ESP32 must join SOME WiFi network because WiFi CSI
-> measures the radio channel between the ESP32 and the access point;
-> without a radio link there is nothing to measure. For deployment
-> without Docker, see `docs/DEPLOYMENT-ALTERNATIVES.md`.
+> **WiFi NO es internet.** El sistema necesita un **access point** WiFi
+> (un router, un hotspot, cualquier cosa que cree una red local) — NO
+> necesita internet. Todo el pipeline (ESP32 → MQTT → backend → GUI →
+> web viewer) corre en la red local: cero bytes llegan a la WAN. Si el
+> lugar no tiene WiFi, sirve el hotspot del teléfono (crea una red local
+> sin gastar datos móviles — la radio del teléfono actúa de mini router;
+> los dispositivos conectados se hablan localmente). La ESP32 debe unirse
+> a ALGUNA red WiFi porque la CSI mide el canal de radio entre la ESP32 y
+> el access point; sin enlace de radio no hay nada que medir. Para
+> desplegar sin Docker, ver `docs/DEPLOYMENT-ALTERNATIVES.md`.
 
-## 2. Broker (Mosquitto via Docker)
+## 2. Broker (Mosquitto vía Docker)
 
-From the repo root (WSL or PowerShell - Docker Desktop handles both):
+Desde la raíz del repo (WSL o PowerShell — Docker Desktop maneja ambos):
 
 ```console
-docker compose up -d          # starts mosquitto on 1883
-docker compose logs mosquitto # verify: "mosquitto version 2.x running"
+docker compose up -d          # levanta mosquitto en 1883
+docker compose logs mosquitto # verificar: "mosquitto version 2.x running"
 ```
 
-The broker also listens on **9001 (MQTT over WebSockets)** — mapped by
-docker-compose and enabled in `mosquitto.conf`. The bundled web viewer
-(§9) does not use it; it is there for future browser clients that talk to
-the broker directly. The broker image **bakes `mosquitto.conf` in at build
-time** (no runtime bind mount), so `docker compose up` works from both
-PowerShell and WSL; after editing `mosquitto.conf`, apply the change with
+El broker también escucha en **9001 (MQTT sobre WebSockets)** — mapeado por
+docker-compose y habilitado en `mosquitto.conf`. El web viewer incluido (§9)
+no lo usa; está para futuros clientes de navegador que hablen directo con el
+broker. La imagen del broker **bakea `mosquitto.conf` en el build** (sin bind
+mount en runtime), así que `docker compose up` funciona desde PowerShell y
+desde WSL; tras editar `mosquitto.conf`, aplicá el cambio con
 `docker compose up -d --build mosquitto`.
 
-Publish a test message to validate the chain:
+Publicá un mensaje de prueba para validar la cadena:
 
 ```console
 docker exec -it wifisensing_mosquitto mosquitto_pub -t esp32/csi/raw -m "0,-50,2,0,10,20"
 ```
 
-### Allow the broker through Windows Firewall (admin PowerShell)
+### Habilitar el broker en el firewall de Windows (PowerShell admin)
 
-The ESP32 connects from the LAN, so inbound TCP 1883 must be allowed —
-scoped to the local subnet and the Private profile, so the ports only
-open to same-subnet devices and stay quiet on networks Windows marks
-Public:
+La ESP32 conecta desde la LAN, así que hay que permitir el TCP 1883 entrante —
+acotado a la subred local y al perfil Private, para que los puertos solo se
+abran a dispositivos de la misma subred y queden callados en redes que Windows
+marca Public:
 
 ```powershell
 New-NetFirewallRule -DisplayName "Mosquitto 1883 (dev)" -Direction Inbound -Protocol TCP -LocalPort 1883 -Action Allow -RemoteAddress LocalSubnet -Profile Private
 ```
 
-One-shot, paste-safe alternative — recreates BOTH dev rules (this one and
-the viewer rule of §9) with the same scoping; safe to re-run (idempotent):
+Alternativa one-shot, paste-safe — recrea AMBAS reglas dev (esta y la del
+viewer de §9) con el mismo scoping; seguro de re-correr (idempotente):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\firewall-rules.ps1
 ```
 
-Note the **Windows host LAN IP** (`ipconfig` -> Wi-Fi adapter IPv4). That is the IP for `MQTT_BROKER_URI` in the firmware config and for every device except the Windows backend itself (which uses `localhost`).
+Anotá la **IP LAN del host Windows** (`ipconfig` → IPv4 del adaptador Wi-Fi).
+Esa es la IP para `MQTT_BROKER_URI` en la config del firmware y para todo
+dispositivo excepto el propio backend Windows (que usa `localhost`).
 
-> The firewall rules require the network to be marked **Private** in
-> Windows (Settings > Network > Network profile); on Public networks the
-> rules stay inactive — which is the safe default on unknown Wi-Fi.
+> Las reglas de firewall exigen que la red esté marcada **Private** en
+> Windows (Configuración > Red > Perfil de red); en redes Public las reglas
+> quedan inactivas — que es el default seguro en Wi-Fi desconocidas.
 
 ## 3. ESP-IDF (WSL)
 
-> WSL commands in this guide are **fish** (bash differences are noted inline — `&&`, globs and `$USER` are identical in both).
+> Los comandos WSL de esta guía son **fish** (las diferencias con bash se
+> aclaran inline — `&&`, globs y `$USER` son idénticos en ambos).
 
 ```fish
 sudo apt-get update
@@ -93,64 +98,72 @@ sudo apt-get install -y git wget flex bison gperf python3 python3-pip python3-ve
 mkdir -p ~/esp && cd ~/esp
 git clone -b v5.3.1 --recursive https://github.com/espressif/esp-idf.git
 cd esp-idf && ./install.sh esp32s3
-source export.fish     # sets up the environment in this tab (native fish script shipped by ESP-IDF)
+source export.fish     # configura el entorno en esta pestaña (script fish nativo que trae ESP-IDF)
 ```
 
-One-time fish abbreviation, so a plain `idfenv` sets up the environment in any new tab:
+Abreviatura fish de una sola vez, para que un `idfenv` solo configure el
+entorno en cualquier pestaña nueva:
 
 ```fish
 abbr --add idfenv 'source ~/esp/esp-idf/export.fish'
 ```
 
-> In bash the only difference is `source export.fish` → `. ./export.sh`; every other line above is identical.
+> En bash la única diferencia es `source export.fish` → `. ./export.sh`;
+> todo lo demás de arriba es idéntico.
 
-> Version matters: the firmware targets the ESP-IDF **v5.x** API (esp-mqtt nested broker config, `esp_wifi_set_csi_rx_cb`). The CSI API is native to ESP-IDF; no external component is required. The required CSI feature flag is already pinned in `src/esp32/sdkconfig.defaults` (`CONFIG_ESP_WIFI_CSI_ENABLED=y`) — no menuconfig step is needed.
+> La versión importa: el firmware apunta a la API **v5.x** de ESP-IDF
+> (config anidada de broker en esp-mqtt, `esp_wifi_set_csi_rx_cb`). La API
+> CSI es nativa de ESP-IDF; no hace falta ningún componente externo. El flag
+> CSI requerido ya está fijado en `src/esp32/sdkconfig.defaults`
+> (`CONFIG_ESP_WIFI_CSI_ENABLED=y`) — no hace falta paso de menuconfig.
 
-## 4. USB serial from WSL (usbipd-win)
+## 4. Puerto serie USB desde WSL (usbipd-win)
 
-WSL2 does not see USB devices natively; attach the board with usbipd (admin PowerShell):
+WSL2 no ve dispositivos USB nativamente; attach de la placa con usbipd
+(PowerShell admin):
 
 ```powershell
 winget install usbipd
-usbipd list                     # find your board's BUSID, e.g. 2-3
-usbipd bind --busid 2-3         # once
+usbipd list                     # buscar el BUSID de tu placa, p. ej. 2-3
+usbipd bind --busid 2-3         # una vez
 usbipd attach --wsl --busid 2-3
 ```
 
-Back in WSL:
+De vuelta en WSL:
 
 ```fish
-ls /dev/ttyACM*                 # expect /dev/ttyACM0
-sudo usermod -aG dialout $USER  # then close and reopen WSL
+ls /dev/ttyACM*                 # esperado: /dev/ttyACM0
+sudo usermod -aG dialout $USER  # luego cerrar y reabrir WSL
 ```
 
-## 5. Configure the firmware
+## 5. Configurar el firmware
 
-**Option A — runtime provisioning (recommended, no rebuild):** after the
-one-time NVS-capable firmware flash (§6), load credentials over USB serial:
+**Opción A — provisioning en runtime (recomendada, sin rebuild):** tras el
+flash de una sola vez del firmware con soporte NVS (§6), cargá las
+credenciales por puerto serie USB:
 
 ```bash
-# Linux / WSL / Fedora (auto-detects the serial port):
-python ../scripts/provision-esp32.py --ssid <SSID> --pass <PASS> --broker mqtt://<LAN-IP>:1883
+# Linux / WSL / Fedora (autodetecta el puerto serie):
+python ../scripts/provision-esp32.py --ssid <SSID> --pass <PASS> --broker mqtt://<IP-LAN>:1883
 
-# Check current state:
+# Ver el estado actual:
 python ../scripts/provision-esp32.py --status
 
-# Clear NVS (fall back to compiled-in values):
+# Limpiar NVS (volver a los valores compilados):
 python ../scripts/provision-esp32.py --clear
 ```
 
-30 seconds per network change — no `idf.py build`, no re-flash, no WSL.
-The binary is credential-free and shareable.
+30 segundos por cambio de red — sin `idf.py build`, sin re-flash, sin WSL.
+El binario queda libre de credenciales y compartible.
 
-**Option B — compiled-in fallback (the original way):** if you prefer the
-#defines (e.g. for a fixed deployment), edit `src/esp32/main/config.h`:
+**Opción B — fallback compilado (la vía original):** si preferís los
+#defines (p. ej. para un despliegue fijo), editá `src/esp32/main/config.h`:
 
-| Define | Value |
+| Define | Valor |
 |---|---|
-| `WIFI_SSID` / `WIFI_PASS` | your 2.4 GHz credentials |
-| `MQTT_BROKER_URI` | `mqtt://<Windows-LAN-IP>:1883` - NOT localhost |
-| `USE_TRAFFIC_PING` | `1` (auto-pings the gateway at 10 Hz to generate RX traffic) |
+| `WIFI_SSID` / `WIFI_PASS` | credenciales de tu WiFi 2.4 GHz |
+| `MQTT_BROKER_URI` | `mqtt://<IP-LAN-de-Windows>:1883` — NO localhost |
+| `USE_TRAFFIC_PING` | `1` (auto-ping al gateway a 10 Hz para generar tráfico RX) |
 
 ## 6. Build, flash, monitor
 
@@ -161,7 +174,7 @@ idf.py build
 idf.py -p /dev/ttyACM0 flash monitor
 ```
 
-Expected on the monitor:
+Esperado en el monitor:
 
 ```
 I (xxxx) csi_main: WiFi connected, IP: 192.168.1.42
@@ -171,18 +184,19 @@ I (xxxx) csi_main: traffic ping to gateway started (every 100 ms)
 I (xxxx) csi_main: csi: captured=120 qfull=0 published=120 failed=0
 ```
 
-**Flash from Windows instead** (recommended when the S3's native USB
-re-enumerates and drops the usbipd tunnel — see §11): detach the board
-(`usbipd detach --busid <X-X>`, admin PowerShell) and run
+**Flashear desde Windows** (recomendado cuando el USB nativo del S3
+re-enumera y tumba el túnel usbipd — ver §11): detach de la placa
+(`usbipd detach --busid <X-X>`, PowerShell admin) y correr
 `powershell -ExecutionPolicy Bypass -File .\scripts\flash-board.ps1`
-(there is a paste-safe `flash-board.cmd` wrapper too). It auto-detects
-the COM port and accepts `-FlashSize` — default `4MB`, matching
-`src/esp32/sdkconfig.defaults`; this board carries 16 MB, so raise both
-together if you ever need the space.
+(también hay un wrapper paste-safe `flash-board.cmd`). Autodetecta el COM y
+acepta `-FlashSize` — default `4MB`, igual a `src/esp32/sdkconfig.defaults`;
+esta placa trae 16 MB, así que subí ambos juntos si algún día necesitás el
+espacio.
 
-## 7. Verify the CSI stream
+## 7. Verificar el stream CSI
 
-From WSL (the broker runs on the Windows side, so use the Windows host IP):
+Desde WSL (el broker corre del lado Windows, así que usá la IP del host
+Windows):
 
 ```fish
 sudo apt-get install -y mosquitto-clients
@@ -190,15 +204,19 @@ set BROKER (grep nameserver /etc/resolv.conf | awk '{print $2}')
 mosquitto_sub -h "$BROKER" -t esp32/csi/raw -C 3
 ```
 
-> Fish swaps `$( ... )` command substitution for `( ... )`; `$BROKER` expansion and quoting work the same.
+> Fish cambia la sustitución de comandos `$( ... )` por `( ... )`; la
+> expansión de `$BROKER` y el quoting funcionan igual.
 
-Expected payload (t_us, rssi, n, seq, amplitudes):
+Payload esperado (t_us, rssi, n, seq, amplitudes):
 
 ```
 1717000000123456,-52,64,42,178,176,171,169,...
 ```
 
-> With WSL mirrored networking (`networkingMode=mirrored`), `localhost` also works — **Windows 11 22H2+ only**. On Windows 10 this mode is unsupported (WSL runs in NAT mode), so keep using the `BROKER` / Windows-LAN-IP path above.
+> Con networking en modo mirror de WSL (`networkingMode=mirrored`),
+> `localhost` también funciona — **solo Windows 11 22H2+**. En Windows 10
+> este modo no está soportado (WSL corre en NAT), así que seguí usando el
+> camino `BROKER` / IP-LAN-de-Windows de arriba.
 
 ## 8. Backend + GUI (Windows)
 
@@ -210,177 +228,190 @@ pip install -r requirements.txt
 python main.py --host localhost
 ```
 
-> **Where the repo lives (no copy needed):** the tree lives in the **WSL
-> filesystem** (`~/dev/projects/c++/sensorproject` on Ubuntu) because the
-> firmware builds there; Windows reaches that same tree through the
-> `\\wsl.localhost\Ubuntu\...` network share — that is the directory the `cd`
-> above enters. `requirements.txt` is `backend/requirements.txt` inside that
-> tree: nothing gets copied anywhere; once inside `backend/`, plain
-> `pip install -r requirements.txt` reads it through the share. The `.venv`
-> it creates is a **Windows** venv (Windows binaries, `Scripts\`) stored on
-> the WSL disk — only Windows Python uses it, and the one-time `pip install`
-> runs slower over the share than on native NTFS (runtime reads are small
-> and fine). Venvs are never portable across OSes: a **separate Linux venv**
-> inside WSL is only needed for headless work there (`pytest`,
-> `web_viewer.py` — they never import Qt, so PyQt5 is not needed on that
-> side).
+> **Dónde vive el repo (sin copiar nada):** el árbol vive en el
+> **filesystem de WSL** (`~/dev/projects/c++/sensorproject` en Ubuntu)
+> porque ahí se compila el firmware; Windows llega a ese mismo árbol por el
+> share de red `\\wsl.localhost\Ubuntu\...` — ese es el directorio que entra
+> el `cd` de arriba. `requirements.txt` es `backend/requirements.txt` dentro
+> de ese árbol: nada se copia a ningún lado; una vez dentro de `backend/`,
+> un `pip install -r requirements.txt` normal lo lee a través del share. El
+> `.venv` que se crea es un **venv de Windows** (binarios Windows,
+> `Scripts\`) almacenado en el disco WSL — solo lo usa el Python de Windows,
+> y el `pip install` único corre más lento por el share que en NTFS nativo
+> (las lecturas en runtime son chicas y están bien). Los venvs nunca son
+> portables entre OS: un **venv Linux separado** dentro de WSL solo hace
+> falta para trabajo headless ahí (`pytest`, `web_viewer.py` — nunca
+> importan Qt, así que PyQt5 no hace falta de ese lado).
 
-If `Activate.ps1` is blocked with "is not digitally signed": Windows treats
-the `\\wsl.localhost` share as a remote zone, so even a `RemoteSigned`
-policy blocks scripts there. Simplest fix — **skip activation entirely**
-and call the venv interpreter directly; every command in this guide then
-becomes `.\.venv\Scripts\python.exe <script>` (e.g.
+Si `Activate.ps1` se bloquea con "is not digitally signed": Windows trata el
+share `\\wsl.localhost` como zona remota, así que hasta una política
+`RemoteSigned` bloquea scripts ahí. Fix más simple — **saltear la activación
+por completo** y llamar al intérprete del venv directo; cada comando de esta
+guía se vuelve `.\.venv\Scripts\python.exe <script>` (p. ej.
 `.\.venv\Scripts\python.exe main.py --host localhost`,
 `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`).
-Alternative, for the current window only:
-`Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force` and
-then activate normally.
+Alternativa, solo para la ventana actual:
+`Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force` y luego
+activar normal.
 
-### Dry-run WITHOUT hardware (recommended first)
+### Dry-run SIN hardware (primero recomendado)
 
-In a second terminal (same venv), publish synthetic CSI:
+En una segunda terminal (mismo venv), publicá CSI sintético:
 
 ```powershell
 python ..\scripts\simulate_esp32.py --host localhost --scenario moving
 ```
 
-Scenarios: `resting` (subject at rest, ~66 BPM / ~18 resp/min), `moving`
-(adds periodic gross-movement episodes), `absent` (empty room).
+Escenarios: `resting` (sujeto en reposo, ~66 BPM / ~18 resp/min), `moving`
+(agrega episodios periódicos de movimiento grueso), `absent` (sala vacía).
 
-The GUI should show **~66 BPM / ~18 resp/min** and both waveforms within ~15 s,
-plus the **Body row** tracking the scenario: `Still` (resting), `Moving`
-during episodes (moving), `Absent` (absent). The right column shows the
-physics panels (subcarrier heatmap, spectrogram, motion-energy trace).
+El GUI debe mostrar **~66 BPM / ~18 resp/min** y ambas ondas en ~15 s, más la
+**fila Body** siguiendo el escenario: `Still` (resting), `Moving` durante los
+episodios (moving), `Absent` (absent). La columna derecha muestra los paneles
+físicos (heatmap de subportadoras, espectrograma, traza de energía de
+movimiento).
 
-### Tune presence/motion and RSSI ranging (optional)
+### Ajustar presencia/movimiento y ranging RSSI (opcional)
 
-Body-row thresholds and the RSSI link-distance estimate are configurable
-via environment variables (formulas and calibration procedures in
-`docs/SIGNAL-MODELING.md`):
+Los umbrales de la fila Body y la estimación de distancia de enlace RSSI son
+configurables por variables de entorno (fórmulas y procedimientos de
+calibración en `docs/SIGNAL-MODELING.md`):
 
-| Env var | Default | Meaning |
+| Variable de entorno | Default | Significado |
 |---|---|---|
-| `CSI_ABSENT_STD` | `0.15` | window std below this = empty room (`Absent`) |
-| `CSI_MOVING_RMS` | `1.5` | 0.5-3.0 Hz motion-band RMS above this = `Moving` |
-| `CSI_RSSI_REF_DBM` | `-52.0` | reference RSSI `R0` measured at `d0` |
-| `CSI_REF_DISTANCE_M` | `1.0` | reference distance `d0` |
-| `CSI_PATH_LOSS_N` | `3.0` | log-distance path-loss exponent `n` |
+| `CSI_ABSENT_STD` | `0.15` | std de la ventana debajo de esto = sala vacía (`Absent`) |
+| `CSI_MOVING_RMS` | `1.5` | RMS de la banda de movimiento 0.5–3.0 Hz encima de esto = `Moving` |
+| `CSI_RSSI_REF_DBM` | `-52.0` | RSSI de referencia `R0` medido a `d0` |
+| `CSI_REF_DISTANCE_M` | `1.0` | distancia de referencia `d0` |
+| `CSI_PATH_LOSS_N` | `3.0` | exponente de path loss log-distance `n` |
 
-Connection knobs are env-overridable too (`MQTT_HOST`, `MQTT_PORT`,
-`MQTT_TOPIC`): an explicit `MQTT_TOPIC` **replaces the whole
-subscription list** with that single topic/pattern — the baseline
-contract, restored by the 2026-10-14 review cycle — while unset/legacy-
-default keeps the multi-link patterns (`esp32/+/csi/raw` + the flat
-topic). The CLI `--topic` flag always wins over the env.
+Los knobs de conexión también son overridables por entorno (`MQTT_HOST`,
+`MQTT_PORT`, `MQTT_TOPIC`): un `MQTT_TOPIC` explícito **reemplaza toda la
+lista de suscripción** por ese único tópico/patrón — el contrato de base,
+restaurado por el ciclo de review del 2026-10-14 — mientras que sin definir
+(o el default legacy) se mantienen los patrones multi-enlace
+(`esp32/+/csi/raw` + el tópico plano). El flag CLI `--topic` siempre gana al
+entorno.
 
-Until it is calibrated you can turn the distance estimate off entirely: set
-`CSI_RSSI_REF_DBM` (or `CSI_REF_DISTANCE_M`) to an empty value or `none` — the
-GUI then shows `—` for the link distance instead of an uncalibrated guess.
+Mientras no esté calibrado podés apagar por completo la estimación de
+distancia: poné `CSI_RSSI_REF_DBM` (o `CSI_REF_DISTANCE_M`) vacío o `none` —
+el GUI entonces muestra `—` en la distancia de enlace en vez de una suposición
+sin calibrar.
 
-RSSI ranging calibration: measure `R0` at a known distance `d0` (e.g. 1 m)
-and set both; see `docs/SIGNAL-MODELING.md` for a two-point fit of `n`.
+Calibración del ranging RSSI: medí `R0` a una distancia conocida `d0`
+(p. ej. 1 m) y configurá ambos; ver `docs/SIGNAL-MODELING.md` para un ajuste
+a dos puntos de `n`.
 
-## 9. Web viewer (phones / tablets)
+## 9. Web viewer (teléfonos / tablets)
 
-The same estimates are also served to any browser on the LAN — no app
-install on the phone. The viewer is an independent MQTT consumer, so it
-works with or without the desktop GUI running.
+Las mismas estimaciones también se sirven a cualquier navegador de la LAN —
+sin instalar nada en el teléfono. El viewer es un consumidor MQTT
+independiente, así que funciona con o sin el GUI de escritorio corriendo.
 
-Its one new dependency is **aiohttp** (HTTP + WebSocket server, Apache 2.0;
-<https://docs.aiohttp.org/>) — already covered by `pip install -r
-requirements.txt`, nothing extra to install. The page itself ships zero
-external assets (no CDN), so it works on LANs without internet.
+Su única dependencia nueva es **aiohttp** (servidor HTTP + WebSocket,
+Apache 2.0; <https://docs.aiohttp.org/>) — ya cubierta por
+`pip install -r requirements.txt`, nada extra que instalar. La página misma
+no trae cero assets externos (sin CDN), así que funciona en LANs sin
+internet.
 
-On the machine that reaches the broker (same venv as §8):
+En la máquina que alcanza al broker (mismo venv que §8):
 
 ```powershell
-python web_viewer.py --broker <BROKER_IP> --host 0.0.0.0 --port 8080
+python web_viewer.py --broker <IP-BROKER> --host 0.0.0.0 --port 8080
 ```
 
-- `--broker`: where MQTT lives (`localhost` if this machine runs Docker).
-- `--host 0.0.0.0` binds the page to the LAN (default); `--port 8080`.
-- Open `http://<PC-LAN-IP>:8080` on the phone, same Wi-Fi.
+- `--broker`: dónde vive el MQTT (`localhost` si esta máquina corre Docker).
+- `--host 0.0.0.0` publica la página a la LAN (default); `--port 8080`.
+- Abrí `http://<IP-LAN-PC>:8080` en el teléfono, misma Wi-Fi.
 
-Allow the port through Windows Firewall once (admin PowerShell):
+Habilitá el puerto en el firewall de Windows una vez (PowerShell admin):
 
 ```powershell
 New-NetFirewallRule -DisplayName "CSI Web Viewer 8080 (dev)" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -RemoteAddress LocalSubnet -Profile Private
 ```
 
-(If you ran `scripts/firewall-rules.ps1` in §2, this rule already exists —
-both are scoped to `LocalSubnet` + the `Private` profile, so mark the
-network Private or open nothing.)
+(Si corriste `scripts/firewall-rules.ps1` en §2, esta regla ya existe — ambas
+están acotadas a `LocalSubnet` + perfil `Private`, así que marcá la red
+Private o no se abre nada.)
 
-**Portable alternative (no Python needed on the target PC)**: build a
-standalone exe with PyInstaller and run it anywhere:
+**Alternativa portable (sin Python en la PC destino)**: compilá un exe
+standalone con PyInstaller y corrélo en cualquier lado:
 
 ```powershell
 .\.venv\Scripts\python.exe -m PyInstaller --onefile --name csi-web-viewer --add-data "web_static;web_static" web_viewer.py
-dist\csi-web-viewer.exe --broker <BROKER_IP> --host 0.0.0.0 --port 8080
+dist\csi-web-viewer.exe --broker <IP-BROKER> --host 0.0.0.0 --port 8080
 ```
 
-Only ONE web viewer can hold port 8080 at a time — the Python script or
-the exe, never both. The desktop GUI (§8) is an independent consumer and
-does not serve the phone page. Phone browsers may try to force HTTPS on
-typed addresses — type the full `http://<IP>:8080` (or disable the
-browser's "always use secure connections" option).
+Solo UN web viewer puede sostener el puerto 8080 a la vez — el script Python
+o el exe, nunca ambos. El GUI de escritorio (§8) es un consumidor
+independiente y no sirve la página del teléfono. Los navegadores del teléfono
+pueden forzar HTTPS en direcciones tipeadas — tipeá el `http://<IP>:8080`
+completo (o deshabilitá la opción "usar siempre conexiones seguras").
 
-The page needs no internet (no CDN): tiles for heart/respiration/body
-state/link distance, a 10-minute trend plot and the latest filtered
-waves, with automatic reconnect. Like everything here: research tool,
-not a medical device.
+La página no necesita internet (sin CDN): tiles de corazón/respiración/estado
+corporal/distancia de enlace, un plot de tendencia de 10 minutos y las últimas
+ondas filtradas, con reconexión automática. Como todo acá: herramienta de
+investigación, no un dispositivo médico.
 
-## 10. Live test with the ESP32-S3
+## 10. Test en vivo con la ESP32-S3
 
-1. `python main.py --host localhost` and keep `idf.py monitor` running.
-2. Subject sits still, 0.5-2 m from the ESP32, in line of sight.
-3. After ~15 s the window fills and estimates appear.
-4. Motion artifacts: a single movement resets the vitals estimates for a few seconds, and the **Body row** switches to `Moving` while you move.
+1. `python main.py --host localhost` y dejá `idf.py monitor` corriendo.
+2. El sujeto se sienta quieto, a 0.5–2 m de la ESP32, con línea de vista.
+3. Tras ~15 s la ventana se llena y aparecen las estimaciones.
+4. Artefactos de movimiento: un solo movimiento resetea las estimaciones por
+   unos segundos, y la **fila Body** pasa a `Moving` mientras te movés.
 
-For stable readings and the empirical validation protocol — empty-room
-falsification, controlled-breathing phase-lock against a metronome,
-reference comparison and repeatability — see
+Para lecturas estables y el protocolo de validación empírica — falsificación
+de sala vacía, phase-lock de respiración controlada contra un metrónomo,
+comparación con referencia y repetibilidad — ver
 **docs/VALIDATION-PROTOCOL.md**.
 
-### Multi-node (multi-ESP32) setup
+### Setup multi-nodo (multi-ESP32)
 
-Each node publishes to its own per-device topic (`esp32/<id>/csi/raw`, id =
-last 3 bytes of its MAC), so flash as many ESP32s as you like — no per-node
-configuration. The backend subscribes `esp32/+/csi/raw` plus the legacy
-flat topic and fuses the links per band (best SNR wins; see
+Cada nodo publica a su tópico por dispositivo (`esp32/<id>/csi/raw`, id =
+últimos 3 bytes de su MAC), así que flasheá tantas ESP32 como quieras — sin
+configuración por nodo. El backend se suscribe a `esp32/+/csi/raw` más el
+tópico plano legacy y fusiona los enlaces por banda (gana el mejor SNR; ver
 `docs/SIGNAL-MODELING.md` §8).
 
-Dry-run two links without hardware — two terminals (same venv):
+Dry-run de dos enlaces sin hardware — dos terminales (mismo venv):
 
 ```powershell
 python ..\scripts\simulate_esp32.py --host localhost --device-id a1b2c3 --scenario resting
 python ..\scripts\simulate_esp32.py --host localhost --device-id d4e5f6 --scenario resting
 ```
 
-The GUI status bar then shows `links a1b2c3, d4e5f6` and the estimates fuse
-automatically; the web page's meta line shows `links 2`.
+La barra de estado del GUI muestra entonces `links a1b2c3, d4e5f6` y las
+estimaciones se fusionan solas; la línea de meta de la página web muestra
+`links 2`.
 
 ## 11. Troubleshooting
 
-| Symptom | Cause / fix |
+| Síntoma | Causa / fix |
 |---|---|
-| Phone cannot open the viewer page | same Wi-Fi? `http://<PC-LAN-IP>:8080` correct? Windows Firewall rule for 8080 (§9)? `web_viewer.py` still running? |
-| `ls /dev/ttyACM*` empty | Re-run `usbipd attach`; check the cable is data-capable; `usbipd list` must show "Attached". |
-| WiFi connects and reconnects forever | SSID is 5 GHz only - use 2.4 GHz; check credentials. |
-| `MQTT connected` never appears | Broker URI uses `localhost` (only valid on Windows itself); check the firewall rule for 1883; Docker Desktop must be running. |
-| MQTT connected but no data | Topic mismatch (default `esp32/csi/raw`); verify with `docker compose logs mosquitto`. |
-| Data flows but GUI is empty | Backend host wrong: on Windows use `localhost`; if the backend runs inside WSL use `$BROKER` from step 7. |
-| `captured` grows, `published` stays 0 | Publishes fail - broker unreachable; check the `failed` counter and broker logs. |
-| `captured` stays 0 | No RX traffic: keep `USE_TRAFFIC_PING 1`, or run `ping -t <ESP32_IP>` from any machine on the network. |
-| Build error inside `start_traffic_ping` | Your IDF ping API differs - set `USE_TRAFFIC_PING 0` in `config.h` and use an external ping instead. |
-| BPM shows "-" | SNR below threshold: shorten distance, remove motion, try `--window 20` for a longer window. |
-| Body row stuck on "waiting for data..." | Motion window (15 s) still filling, or the CSI stream is not reaching the backend; check the pkt/s rate in the status bar. |
-| `idf.py: command not found` | Run `idfenv` (or `source ~/esp/esp-idf/export.fish`) in this tab — in bash: `. ~/esp/esp-idf/export.sh`. |
-| Flash fails with `No serial data received` and then `/dev/ttyACM0` vanishes | The S3's native USB re-enumerates on every chip reset, which drops the usbipd tunnel mid-flash. Flash from Windows instead (no tunnel): install esptool in the venv (`.\.venv\Scripts\python.exe -m pip install esptool`), `usbipd detach --busid <X-X>`, then `powershell -ExecutionPolicy Bypass -File .\scripts\flash-board.ps1` (auto-detects the COM port). |
-| esptool from Windows also says `No serial data received` on COM3 | The board has no auto-download circuit: it never enters download mode by itself. Manual entry: hold **BOOT**, tap **RST**, release **BOOT** — the board re-enumerates as the composite JTAG/serial unit with a new COM number, sits in ROM download mode waiting, and `flash-board.ps1` detects that enumeration and flashes with `--before no-reset`. After the flash, tap **RST** if the app does not start by itself. |
+| El teléfono no abre la página del viewer | ¿misma Wi-Fi? ¿`http://<IP-LAN-PC>:8080` correcta? ¿regla de firewall de Windows para 8080 (§9)? ¿`web_viewer.py` sigue corriendo? |
+| `ls /dev/ttyACM*` vacío | Re-correr `usbipd attach`; verificar que el cable sea de datos; `usbipd list` debe mostrar "Attached". |
+| El WiFi conecta y reconecta para siempre | SSID solo 5 GHz — usar 2.4 GHz; verificar credenciales. |
+| Nunca aparece `MQTT connected` | El URI del broker usa `localhost` (solo válido en la propia Windows); verificar la regla de firewall del 1883; Docker Desktop debe estar corriendo. |
+| MQTT conectado pero no hay datos | Mismatch de tópico (default `esp32/csi/raw`); verificar con `docker compose logs mosquitto`. |
+| Fluyen datos pero el GUI está vacío | Host del backend mal puesto: en Windows usar `localhost`; si el backend corre dentro de WSL usar `$BROKER` del paso 7. |
+| `captured` crece, `published` queda en 0 | Los publish fallan — broker inalcanzable; verificar el contador `failed` y los logs del broker. |
+| `captured` queda en 0 | No hay tráfico RX: mantener `USE_TRAFFIC_PING 1`, o correr `ping -t <IP-ESP32>` desde cualquier máquina de la red. |
+| Error de build dentro de `start_traffic_ping` | Tu API de ping del IDF difiere — poner `USE_TRAFFIC_PING 0` en `config.h` y usar un ping externo. |
+| BPM muestra "-" | SNR debajo del umbral: acortar distancia, eliminar movimiento, probar `--window 20` para una ventana más larga. |
+| Fila Body clavada en "waiting for data..." | La ventana de movimiento (15 s) todavía se está llenando, o el stream CSI no llega al backend; verificar la tasa pkt/s en la barra de estado. |
+| `idf.py: command not found` | Correr `idfenv` (o `source ~/esp/esp-idf/export.fish`) en esta pestaña — en bash: `. ~/esp/esp-idf/export.sh`. |
+| El flash falla con `No serial data received` y luego `/dev/ttyACM0` desaparece | El USB nativo del S3 re-enumera en cada reset del chip, lo que tumba el túnel usbipd a mitad de flash. Flashear desde Windows (sin túnel): instalar esptool en el venv (`.\.venv\Scripts\python.exe -m pip install esptool`), `usbipd detach --busid <X-X>`, y luego `powershell -ExecutionPolicy Bypass -File .\scripts\flash-board.ps1` (autodetecta el COM). |
+| esptool desde Windows también dice `No serial data received` en COM3 | La placa no tiene circuito de auto-download: nunca entra en modo descarga sola. Entrada manual: mantener **BOOT**, tocar **RST**, soltar **BOOT** — la placa re-enumera como unidad compuesta JTAG/serie con un COM nuevo, queda en modo descarga ROM esperando, y `flash-board.ps1` detecta esa enumeración y flashea con `--before no-reset`. Tras el flash, tocar **RST** si la app no arranca sola. |
 
-## 12. Security notes
+## 12. Notas de seguridad
 
-- `mosquitto.conf` allows **anonymous** connections: LAN/dev use only. For anything shared, add `password_file` and `allow_anonymous false` (the portable kit's README repeats this before any wider exposure).
-- Dev firewall rules (`scripts/firewall-rules.ps1`) are scoped to `-RemoteAddress LocalSubnet -Profile Private`: same-subnet devices only, inactive on Public-marked networks.
-- WiFi credentials live in `config.h` - never commit real ones; keep a private copy or inject them via your build system.
+- `mosquitto.conf` permite conexiones **anónimas**: solo uso LAN/dev. Para
+  cualquier uso compartido, agregar `password_file` y
+  `allow_anonymous false` (el README del kit portable lo repite antes de
+  cualquier exposición más amplia).
+- Las reglas de firewall dev (`scripts/firewall-rules.ps1`) están acotadas a
+  `-RemoteAddress LocalSubnet -Profile Private`: solo dispositivos de la
+  misma subred, inactivas en redes marcadas Public.
+- Las credenciales WiFi viven en `config.h` — nunca commitear las reales;
+  mantener una copia privada o inyectarlas desde tu sistema de build.

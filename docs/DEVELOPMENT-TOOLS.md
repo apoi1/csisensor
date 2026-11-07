@@ -4,7 +4,7 @@
 
 Referencia única de: (1) qué herramientas usa cada capa y por qué, (2) la metodología correcta de build/flash/depuración, (3) las bases teóricas y matemáticas del procesamiento de señales —incluida la cadena **serie de Fourier → DFT → FFT**, la derivación de cada fórmula y el origen de cada variable—, (4) el flujo de datos end-to-end y (5) las tecnologías, repositorios y datasets del proyecto.
 
-> Guía paso a paso de instalación/despliegue: **`DEPLOYMENT.md`**. Resumen de arquitectura: **`docs/PROJECT-ARCHITECTURE.md`**.
+> Guía paso a paso de instalación/despliegue: **`DEPLOYMENT.md`**. Esquema del sistema: **`docs/HOW-IT-WORKS.md` §0**; flujo autoritativo: **`docs/DATA-PIPELINE.md`**.
 
 ---
 
@@ -305,8 +305,7 @@ Si algún día hace falta robustez que el DSP puro no da (mucho movimiento, ambi
 > **Consolidado**: el flujo etapa por etapa — física → firmware → MQTT →
 > ingesta → DSP → fusión multi-link → render, con el código exacto de cada
 > paso — vive en **`docs/DATA-PIPELINE.md`** (fuente autoritativa). El esquema
-> visual Mermaid está en `docs/HOW-IT-WORKS.md` §0 y el resumen
-> arquitectónico en `docs/PROJECT-ARCHITECTURE.md`.
+> visual Mermaid está en `docs/HOW-IT-WORKS.md` §0.
 
 ## 5. Tecnologías, repositorios y datasets
 
@@ -351,7 +350,7 @@ Si algún día hace falta robustez que el DSP puro no da (mucho movimiento, ambi
 ## 6. Referencias rápidas
 
 - **Guía de instalación y despliegue completa (12 secciones + troubleshooting):** `DEPLOYMENT.md`
-- **Resumen de arquitectura:** `docs/PROJECT-ARCHITECTURE.md`
+- **Esquema del sistema y flujo de datos:** `docs/HOW-IT-WORKS.md` §0 y `docs/DATA-PIPELINE.md`
 - API de WiFi/CSI del IDF: sección *WiFi CSI* de `esp_wifi.h` (docs ESP-IDF v5.3.x, ESP32-S3)
 - Filtros y espectro: documentación de `scipy.signal` (butter, sosfiltfilt, detrend)
 - **Licencia del proyecto:** MIT — ver `LICENSE`
