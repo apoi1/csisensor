@@ -140,6 +140,20 @@ a_k[n] = C_k + B\cdot\sin(2\pi f_\text{resp} t_n + \varphi_k) + H\cdot\sin(2\pi 
 | `φ_k`, `ψ_k` | fase inicial por subportadora | 0–2π rad | geometría del multipath (distancias en múltiplos de λ/2 ≈ 6 cm @ 2.4 GHz) |
 | `ε_k[n]` | ruido + artefactos | σ ≈ 0.05–1 | ruido de radio, AGC del receptor, movimiento del entorno |
 
+**Cómo se llenan esas incógnitas: medido vs reconstruido vs no identificable.**
+La ecuación de arriba es el modelo teórico; el sistema no mide sus variables
+una a una — algunas las mide directo, otras las *reconstruye* a partir del
+dato, y otras se declaran honestamente no identificables:
+
+| Variable teórica | Estado | Cómo se obtiene del dato medido |
+|---|---|---|
+| `a_k[n]`, `n`, `t_n` | **medido** | directo del frame CSI (firmware: `wifi_csi_rx_cb`) |
+| `C_k` (DC) | **reconstruido y descartado** | media de la ventana; lo elimina `detrend` (paso 2) |
+| `f_resp`, `f_heart` | **reconstruido** | pico de la FFT por banda + interpolación parabólica δ (pasos 4–6) |
+| `ε_k` (σ del ruido) | **reconstruido** | mediana del piso espectral de la banda → base del SNR (paso 7) |
+| `B`, `H` (profundidades) | **parcial — solo en a.u.** | visibles como amplitud relativa de las ondas filtradas; el valor físico en mm **no es identificable** sin la ganancia del canal Γ (la fase está descartada) — por eso los ejes dicen [a.u.] y no mm |
+| `φ_k`, `ψ_k` (fases) | **no identificable por diseño** | descartadas por el firmware (wrap sin calibración); `SIGNAL-MODELING.md` §3 |
+
 ### 3.3 De la serie de Fourier a la FFT: la teoría indirecta
 
 Todo el estimador descansa en una idea de Fourier (1807): **toda señal periódica es una suma de senos y cosenos armónicos**. Nuestro tórax es un "péndulo" biológico: produce unas pocas componentes periódicas (`f_resp`, `f_heart`) embebidas en ruido — y la familia de herramientas de Fourier es exactamente lo que permite **medir cuánto hay de cada frecuencia**.

@@ -54,6 +54,19 @@ to topic `esp32/csi/raw` on a Mosquitto broker (Docker).
 
 **OFDM CSI.** Each OFDM subcarrier probes the multipath channel; a moving/scattering body perturbs $H_k$.
 
+**What one receiver can (and cannot) resolve.** The channel seen by the receiver is the complex sum over paths,
+
+```math
+H(f) = \sum_{p} \alpha_p\, e^{-j 2\pi f \tau_p}, \qquad \tau_p = d_p / c
+```
+
+with per-path amplitude $\alpha_p$ and delay $\tau_p$. Two consequences bound what the data can ever tell us:
+
+1. **No per-path identification, no direction.** A single omni antenna integrates all directions — angle of arrival needs an antenna array (§6). The samples carry no "which echo came from where" label: only the per-tone complex sum exists.
+2. **No per-path delay separation here.** Resolving echo delays requires phase across frequency (inverse-FFT of $H(f)$ → power delay profile), with range resolution $\Delta d \approx c/B \approx 15\ \mathrm{m}$ for a 20 MHz channel — too coarse for indoor echoes regardless. And this firmware discards phase, so only $|H_k|$, the magnitude of the sum, exists downstream.
+
+What survives is exactly what sensing needs: static paths contribute a (static) phasor sum — removed by `detrend` — while the chest rotates its phasor slowly and periodically. The time-axis FFT (§4) reads that rotation's frequency; it never needs to know which echo was which.
+
 **Fresnel-zone model.** The Fresnel zones are ellipsoids around the TX–RX axis. The radius of the n-th zone, with `d1`, `d2` the distances from TX and RX to the body, is
 
 ```math
@@ -205,8 +218,29 @@ Defaults: `R0 = -52 dBm` at `d0 = 1 m`, `n_pl = 3.0`. This ranges the TX–RX li
 
 ## 7. How the app evaluates body position today
 
-- Classification pipeline absent / still / moving (window std + motion-band RMS), plus the RSSI link distance labeled **"link dist"** in the GUI.
-- What it does **not** estimate: x/y coordinates, posture, angle.
+**Technique actually implemented** (`motion_analyzer.py`, exact):
+
+1. Per window, average the per-packet RSSI → $\bar{R}$ [dBm].
+2. If calibrated (`CSI_RSSI_REF_DBM`, `CSI_REF_DISTANCE_M`, `CSI_PATH_LOSS_N` set; defaults −52 dBm @ 1.0 m, `n_pl = 3.0`), invert the log-distance model:
+
+```math
+\hat{d} = d_0 \cdot 10^{(R_0 - \bar{R}) / (10\, n_{pl})}
+```
+
+   → the **"link dist ~…"** value shown in the GUI Body row and the web viewer.
+3. If not calibrated (`CSI_RSSI_REF_DBM=none`), ranging is disabled and shown as `—` — the system refuses to invent meters.
+
+**Range vs position.** That value is a *range* to the radio link, not a position: with one link there is no geometry to triangulate, and with a single omni antenna there is no angle (§6). The GUI never shows x/y.
+
+**Why it is not exact — quantified.** The model's shadowing term $X_\sigma$ is ±5–10 dB in a typical room. At $n_{pl} = 3$, every 5 dB of fading error multiplies the distance estimate by $10^{5/30} \approx 1.47$: ±10 dB of fading swings the displayed distance roughly ×0.7…×2.1 around the true value, and the system cannot tell whether a given deviation is shadowing or real displacement. Body blockage, antenna orientation and chipset RSSI variance add further bias.
+
+**Explicitly pending (future work — not solved):**
+
+- automated per-room two-point calibration to pin $R_0$ / $n_{pl}$ per installation (§6);
+- multi-node fusion for coarse trilateration (needs ≥ 3 calibrated links);
+- phase/ToF-based ranging (requires publishing phase — the documented firmware path, §3).
+
+Until one of those lands, "link dist" must be read as an order-of-magnitude compass, never as a measured position.
 
 ## 8. Multi-device links (multi-ESP32) — implemented design
 

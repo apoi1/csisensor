@@ -10,6 +10,20 @@
 > sistema: el software que corre en la ESP32). Es una herramienta de
 > investigación; no es un dispositivo médico.
 
+**Mapa de responsabilidades** — qué NO está acá (evita duplicación entre docs):
+
+| Si buscás… | Está en |
+|---|---|
+| Física y modelo de señal | `SIGNAL-MODELING.md` |
+| Matemáticas exactas del DSP y flujo etapa por etapa (**autoridad**) | `DATA-PIPELINE.md` §4 y §0–§6 |
+| Cómo leer cada gráfica (guía simple, con figuras) | `HOW-IT-WORKS.md` §6 |
+| Correspondencia dato visible ← origen exacto (**autoridad**) | `DATA-PIPELINE.md` §7 |
+| Config global del sistema (firmware/backend) | `DEVELOPMENT-TOOLS.md` §2, `SIGNAL-MODELING.md` §2 |
+
+Este documento aporta solo la **vista del proceso**: hilos, ciclo de vida,
+qué componente del proceso renderiza cada cosa, decisiones de diseño del
+proceso y su diagrama.
+
 ---
 
 ## 1. Qué es el aplicativo y su función en el sistema
@@ -191,6 +205,11 @@ en `_on_tick`).
 ---
 
 ## 5. Qué ve el usuario y de dónde sale
+
+> La **autoridad** de la correspondencia dato visible ← origen exacto es
+> `DATA-PIPELINE.md` §7; la guía de lectura con figuras es `HOW-IT-WORKS.md`
+> §6. Esta tabla aporta solo lo que ninguno de los dos muestra: **qué
+> componente de este proceso** renderiza cada cosa.
 
 Los paneles son los mismos que describe la guía de lectura de
 [HOW-IT-WORKS.md](HOW-IT-WORKS.md) §6 (y la correspondencia matemática exacta

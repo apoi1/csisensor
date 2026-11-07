@@ -478,6 +478,86 @@ def fig_ping_roundtrip():
     save(fig, "ping-roundtrip.png")
 
 
+# ------------------------------------------ 12. AM analogy (carrier+envelope)
+def fig_am_analogy():
+    """AM analogy: fast WiFi tone (carrier) + slow chest envelope = |H_k|."""
+    t = np.linspace(0, 15, 3000)
+    carrier_f = 8.0                       # visual stand-in (real: 2.4 GHz)
+    resp_f = 0.28                         # 17 /min
+    envelope = 0.35 + 0.28 * np.sin(2 * np.pi * resp_f * t)
+    carrier = envelope * np.sin(2 * np.pi * carrier_f * t)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8.0, 4.6), sharex=True)
+
+    ax1.plot(t, carrier, color="#999", lw=0.5)
+    ax1.plot(t, envelope, color=C_HEART, lw=1.8, ls="--")
+    ax1.plot(t, -envelope, color=C_HEART, lw=1.8, ls="--")
+    ax1.fill_between(t, -envelope, envelope, color=C_RAW, alpha=0.08)
+    ax1.set_ylabel("amplitude [a.u.]")
+    ax1.set_title("The WiFi tone as carrier (drawn slow to be visible; real: 2.4 GHz)\n"
+                  "dashed red = envelope written by the chest — like an AM radio station")
+    ax1.set_ylim(-1.0, 1.0)
+
+    ax2.plot(t, envelope, color=C_RAW, lw=2)
+    pk = 0.5 / resp_f
+    annot_arrow(ax2, (pk, 0.72), (pk + 1 / resp_f, 0.72),
+                "T ≈ 3.6 s → 17 /min", C_RAW, ty=0.09)
+    ax2.set_ylim(0, 1.05)
+    ax2.set_xlabel("t [s]")
+    ax2.set_ylabel(r"$|H_k|$ [a.u.]")
+    ax2.set_title("What the system reads: the envelope alone — the AM message\n"
+                  "(the rate is recovered later with the FFT; this is not FM)")
+    fig.tight_layout()
+    save(fig, "am-modulation-analogy.png")
+
+
+# ------------------------------------------ 13. DSP input: the 150x64 matrix
+def fig_dsp_input_matrix():
+    """The exact DSP input: sliding window matrix + per-band peak search."""
+    rng = np.random.default_rng(31)
+    t = np.arange(0, WIN_S, 1 / FS)
+    M = rng.normal(45, 1.2, (K, t.size))
+    for k in (12, 23, 40, 55):
+        M[k] += 3.0 * np.sin(2 * np.pi * 0.28 * t)      # respiration (coherent)
+    M[23] += 0.35 * np.sin(2 * np.pi * 1.25 * t)        # this one also sees heart
+
+    fig = plt.figure(figsize=(9.0, 3.8))
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.45, 1.0], wspace=0.25)
+    ax1 = fig.add_subplot(gs[0, 0])
+    im = ax1.imshow(M, aspect="auto", origin="lower", cmap="viridis",
+                    extent=[0, WIN_S, 0, K])
+    ax1.set_xlabel("t [s]  (150 rows = 15 s @ 10 Hz)")
+    ax1.set_ylabel("subcarrier k (64 columns)")
+    ax1.set_title("The exact DSP input: the sliding window matrix —\n"
+                  "the stacked CSV frames, one a_k per cell")
+    fig.colorbar(im, ax=ax1, label="a_k [a.u.]", fraction=0.046)
+
+    # spectrum of the best column with both physiological bands
+    x = M[23] - M[23].mean()
+    w = np.hanning(x.size)
+    S = np.abs(np.fft.rfft(x * w))
+    f = np.fft.rfftfreq(x.size, 1 / FS)
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax2.plot(f, S, color="#333", lw=1.1)
+    ax2.axvspan(RESP_LO, RESP_HI, color=C_RESP, alpha=0.15)
+    ax2.axvspan(HEART_LO, HEART_HI, color=C_HEART, alpha=0.15)
+    fr = f[np.argmax(S * (f >= RESP_LO) * (f <= RESP_HI))]
+    fh = f[np.argmax(S * (f >= HEART_LO) * (f <= HEART_HI))]
+    ax2.annotate("respiration peak\n0.1–0.5 Hz", xy=(fr, S[f == fr][0] if np.any(f == fr) else (fr, S.max())),
+                 xytext=(0.55, S.max() * 0.8), fontsize=7.5, color=C_RESP,
+                 arrowprops=dict(arrowstyle="->", color=C_RESP, lw=1))
+    ax2.annotate("heart peak\n0.8–2.0 Hz", xy=(fh, S.max() * 0.35),
+                 xytext=(1.6, S.max() * 0.55), fontsize=7.5, color=C_HEART,
+                 arrowprops=dict(arrowstyle="->", color=C_HEART, lw=1))
+    ax2.set_xlim(0, 3)
+    ax2.set_xlabel("f [Hz]")
+    ax2.set_ylabel(r"$|X[k]|$ [a.u.]")
+    ax2.set_title("Same column, two bands: wins the best\nSNR peak (each band may pick a\ndifferent subcarrier)")
+    fig.suptitle("Discrimination is by FREQUENCY, not by origin — detrend → Hann → FFT per column",
+                 y=1.02, fontsize=10)
+    fig.tight_layout()
+    save(fig, "dsp-input-matrix.png")
+
+
 if __name__ == "__main__":
     print("Generating documentation figures -> docs/img/")
     fig_wave_anatomy()
@@ -491,4 +571,6 @@ if __name__ == "__main__":
     fig_csi_frame()
     fig_ofdm_subcarriers()
     fig_ping_roundtrip()
+    fig_am_analogy()
+    fig_dsp_input_matrix()
     print("Done.")

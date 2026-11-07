@@ -132,6 +132,20 @@ literalmente, una huella digital de la geometría de la sala.
 
 ![El canal: camino directo + ecos multipath y la zona de Fresnel donde el pecho es medible](img/multipath-fresnel.png)
 
+**¿Y cómo sabe la placa qué eco es cuál? No lo sabe — y no lo necesita.**
+Las copias no llegan etiquetadas con su dirección ni con su hora de
+llegada: la antena ve, para cada tono, **la suma ya mezclada** de todos
+los caminos. Es como escuchar un acorde en una sala con eco: no podés
+señalar a cada violinista, pero si uno camina hacia y desde el
+micrófono, el acorde entero sube y baja de volumen al ritmo de sus
+pasos. Eso es exactamente lo que ocurre: los espejos fijos (paredes,
+muebles) suman un "acorde" estable que el detrend lava, y el único
+espejo que se mueve con periodicidad es el pecho — su aporte tiembla al
+ritmo de la respiración y del corazón, y esa vibración de la suma es lo
+que la FFT del backend mide **en el tiempo**. (La versión técnica — por
+qué una sola antena no puede dar dirección y por qué los retardos
+individuales no se resuelven — está en `SIGNAL-MODELING.md` §3.)
+
 ### 2.3 El pecho: el "espejo" que nos interesa
 
 - **Respiración**: el pecho se desplaza algunos milímetros a ~1 cm,
@@ -231,6 +245,8 @@ portadora (y la fase, que haría posible un análisis más fino, la
 descartamos). La frecuencia del temblor (respiraciones/min, bpm) se
 recupera después, con la FFT, mirando cuánta energía hay en cada banda.
 
+![Analogía AM: el tono WiFi como carrier y la envolvente que escribe el pecho — lo que el sistema lee es la envolvente](img/am-modulation-analogy.png)
+
 **De la onda al frame, la cadena exacta**: símbolo OFDM recibido → el
 chip correlaciona el preámbulo de entrenamiento y estima
 $H_k = I_k + jQ_k$ por tono → el firmware calcula
@@ -244,6 +260,8 @@ subportadora se transforma con detrend→Hann→FFT y se buscan picos en la
 banda 0,1–0,5 Hz y en la 0,8–2,0 Hz; gana la mejor subportadora *de cada
 banda* (pueden ser distintas). Matemática exacta: `docs/DATA-PIPELINE.md`
 §4.
+
+![El input exacto del DSP: la matriz 150×64 de amplitudes y la búsqueda de pico por banda en cada columna](img/dsp-input-matrix.png)
 
 **Comportamiento esperado** (y es lo que aprovecha el procesamiento):
 
@@ -325,7 +343,11 @@ invierte el modelo log-distance para estimar la distancia del enlace:
 calibración, la estimación se apaga (`—`) en vez de inventar metros.
 **Límite honesto**: el *fading* por multipath mete ±5–10 dB de
  dispersión alrededor de esa curva → la distancia es una **brújula, no
-un GPS** (§5 paso 8, `SIGNAL-MODELING.md` §6).
+un GPS** (§5 paso 8, `SIGNAL-MODELING.md` §6). Estado explícito:
+**pendiente de resolver** — la calibración por sala, la trilateración
+multi-nodo y el ranging por fase/ToF son trabajo futuro
+(`SIGNAL-MODELING.md` §7); hasta entonces, la distancia en pantalla se
+lee como un orden de magnitud, nunca como una posición.
 
 **Cómo se sostiene la precisión** (qué protege cada mecanismo, todos
 verificables en `config.py` / `link_manager.py` / `vitals_processor.py`):
